@@ -1,6 +1,7 @@
 #!/bin/bash
 # Install the Release build of Buff It 2 The Limit (Pad) on the Steam Deck.
-# Usage: ./deploy.sh [--bind-menu]
+# Usage: ./deploy.sh [--bind-menu] [--kingmaker]
+#   --kingmaker  install the Kingmaker build (BuffIt2TheLimit.Kingmaker) instead of the WotR one.
 #   --bind-menu  in every bi2tl-*.json: open menu = F7 (Steam Input L5 tap), Long = F6,
 #                Important = F9, Quick cleared (groups are applied from the menu).
 #                No Shift: Steam Input drops delayed keys of a short tap, so chords never arrive.
@@ -13,12 +14,27 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT="$HERE/BuffIt2TheLimit/bin/Release"
 
 BIND=0
+KM=0
 for a in "$@"; do
   case "$a" in
     --bind-menu) BIND=1 ;;
+    --kingmaker) KM=1 ;;
     *) echo "unknown option: $a"; exit 1 ;;
   esac
 done
+
+if [ "$KM" = 1 ]; then
+  KM_MOD_DIR="/home/deck/.local/share/Steam/steamapps/common/Pathfinder Kingmaker/Mods/PadBuffsKingmaker"
+  KM_OUT="$HERE/BuffIt2TheLimit.Kingmaker/bin/Release"
+  ssh -o ConnectTimeout=5 "$DECK" true || { echo "deck unreachable"; exit 1; }
+  if ssh "$DECK" "pgrep -f '[K]ingmaker.exe' >/dev/null"; then
+    echo "Kingmaker is running, close it before installing"; exit 1
+  fi
+  ssh "$DECK" "mkdir -p '$KM_MOD_DIR/UserSettings' && rm -f '$KM_MOD_DIR'/*.cache"
+  scp -q "$KM_OUT/PadBuffsKingmaker.dll" "$KM_OUT/Info.json" "$DECK:$KM_MOD_DIR/"
+  echo "installed to $DECK:$KM_MOD_DIR"
+  exit 0
+fi
 
 ssh -o ConnectTimeout=5 "$DECK" true || { echo "deck unreachable"; exit 1; }
 if ssh "$DECK" "pgrep -f '[W]rath.exe' >/dev/null"; then

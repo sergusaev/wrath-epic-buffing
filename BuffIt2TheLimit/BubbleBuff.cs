@@ -24,7 +24,7 @@ namespace BuffIt2TheLimit {
         public readonly bool Archmage;
 
         public BuffKey(AbilityData ability, bool archmage) {
-            Guid = ability.Blueprint.AssetGuid.m_Guid;
+            Guid = ability.Blueprint.Gid();
             if (ability.IsMetamagicked())
                 MetamagicMask = ability.MetamagicData.MetamagicMask;
             else
@@ -32,8 +32,8 @@ namespace BuffIt2TheLimit {
             Archmage = archmage;
         }
 
-        public BuffKey(BlueprintGuid blueprintGuid) {
-            Guid = blueprintGuid.m_Guid;
+        public BuffKey(Guid blueprintGuid) {
+            Guid = blueprintGuid;
             MetamagicMask = 0;
             Archmage = false;
         }
@@ -55,6 +55,10 @@ namespace BuffIt2TheLimit {
     }
     public class BubbleBuff {
         public HashSet<BuffGroup> InGroups = new HashSet<BuffGroup> { BuffGroup.Long };
+        public HashSet<BuffGroup> DisabledIn = new();
+
+        // Cast by the group: in it, switched on there and with at least one target.
+        public bool ActiveIn(BuffGroup group) => Requested > 0 && InGroups.Contains(group) && !DisabledIn.Contains(group);
         public AbilityData Spell;
         HashSet<string> wanted = new();
         HashSet<string> notWanted = new();
@@ -121,7 +125,11 @@ namespace BuffIt2TheLimit {
             : Spell.Name;
         public string NameMeta => IsActivatable ? Name : $"{Spell.Name} {MetaMagicFlags}";
         public Sprite Icon => IsActivatable ? ActivatableSource.Blueprint.Icon
+#if KINGMAKER
+            : Spell?.Blueprint?.Icon;
+#else
             : (Spell?.MagicHackData != null ? Spell.Icon : Spell?.Blueprint?.Icon);
+#endif
 
 
         public bool UnitWants(UnitEntityData unit) => wanted.Contains(unit.UniqueId);
@@ -153,7 +161,7 @@ namespace BuffIt2TheLimit {
             this.IsActivatable = true;
             var blueprint = activatable.Blueprint;
             this.NameLower = blueprint.Name.ToLower();
-            this.Key = new BuffKey(blueprint.AssetGuid);
+            this.Key = new BuffKey(blueprint.Gid());
             this.Category = Category.Song;
             this.BuffsApplied = new AbilityCombinedEffects(Enumerable.Empty<IBeneficialEffect>());
             this.ActivatableGroup = blueprint.Group;
@@ -224,6 +232,7 @@ namespace BuffIt2TheLimit {
             } else {
                 InGroups = new HashSet<BuffGroup> { state.InGroup };
             }
+            DisabledIn = state.DisabledIn != null ? new HashSet<BuffGroup>(state.DisabledIn) : new HashSet<BuffGroup>();
             SourcePriorityOverride = state.SourcePriorityOverride;
             for (int i = 0; i < Bubble.ConfigGroup.Count; i++) {
                 UnitEntityData u = Bubble.ConfigGroup[i];
@@ -295,6 +304,9 @@ namespace BuffIt2TheLimit {
             if (spell.Spellbook.Blueprint.Spontaneous) {
                 return 1;
             }
+#if KINGMAKER
+            return 1;
+#else
             else {
                 if (spell.SpellSlot?.LinkedSlots != null && (spell.SpellSlot?.IsOpposition ?? false)) {
                     return spell.SpellSlot.LinkedSlots.Count();
@@ -303,6 +315,7 @@ namespace BuffIt2TheLimit {
                     return 1;
                 }
             }
+#endif
         }
 
         public void Validate() {
@@ -634,7 +647,7 @@ namespace BuffIt2TheLimit {
     public class BuffProvider {
         public CasterKey Key => new() {
             Name = who.UniqueId,
-            Spellbook = book?.Blueprint.AssetGuid.m_Guid ?? Guid.Empty,
+            Spellbook = book?.Blueprint.Gid() ?? Guid.Empty,
             SourceType = SourceType
         };
 
@@ -721,13 +734,17 @@ namespace BuffIt2TheLimit {
 
             public ForceShareTransmutation(BuffProvider unit) {
                 this.unit = unit;
+#if !KINGMAKER
                 if (unit.ShareTransmutation)
                     unit.who.State.Features.ShareTransmutation.Retain();
+#endif
             }
 
             public void Dispose() {
+#if !KINGMAKER
                 if (unit.ShareTransmutation)
                     unit.who.State.Features.ShareTransmutation.Release();
+#endif
             }
         }
 
@@ -785,7 +802,7 @@ namespace BuffIt2TheLimit {
         public bool RequiresUmdCheck {
             get {
                 if (SourceType != BuffSourceType.Scroll) return false;
-                return !who.Spellbooks.Any(b =>
+                return !who.Descriptor.Spellbooks.Any(b =>
                     b.Blueprint.SpellList?.SpellsByLevel?.Any(level =>
                         level.Spells.Any(s => s == spell.Blueprint)) == true);
             }

@@ -6,6 +6,7 @@ GamePath.props
 *Undefined*GamePath.props
 deploy.sh
 GameInstall/
+GameInstallKM/
 GameDlls/
 .config/
 docs/

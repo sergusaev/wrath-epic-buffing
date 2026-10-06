@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+	<Import Project="$(SolutionDir)GamePath.props" Condition="Exists('$(SolutionDir)GamePath.props')" />
+
+	<!-- Kingmaker build of the gamepad buff menu: the shared engine and pad UI from
+	     ../BuffIt2TheLimit compiled with KINGMAKER, without the WotR spellbook UI. -->
+	<PropertyGroup>
+		<TargetFramework>net48</TargetFramework>
+		<AssemblyName>PadBuffsKingmaker</AssemblyName>
+		<RootNamespace>BuffIt2TheLimit</RootNamespace>
+		<Version>0.1.0</Version>
+		<LangVersion>latest</LangVersion>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+		<DefineConstants>$(DefineConstants);KINGMAKER</DefineConstants>
+		<KingmakerInstallDir Condition="'$(KingmakerInstallDir)' == ''">$(SolutionDir)GameInstallKM</KingmakerInstallDir>
+		<EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+	</PropertyGroup>
+	<ItemGroup>
+		<Reference Include="$(KingmakerInstallDir)\Kingmaker_Data\Managed\UnityEngine*.dll" Private="false" />
+		<Reference Include="$(KingmakerInstallDir)\Kingmaker_Data\Managed\Assembly-CSharp*.dll" Publicize="true" Private="false" />
+		<Reference Include="$(KingmakerInstallDir)\Kingmaker_Data\Managed\UnityModManager\UnityModManager.dll" Publicize="true" Private="false" />
+		<Reference Include="$(KingmakerInstallDir)\Kingmaker_Data\Managed\UnityModManager\0Harmony.dll" Private="false" />
+		<Reference Include="$(KingmakerInstallDir)\Kingmaker_Data\Managed\Newtonsoft.Json.dll" Private="false" />
+		<Reference Include="$(KingmakerInstallDir)\Kingmaker_Data\Managed\UniRx.dll" Publicize="true" Private="false" />
+		<Reference Include="$(KingmakerInstallDir)\Kingmaker_Data\Managed\Rewired_Core.dll" Private="false" />
+		<Reference Include="$(KingmakerInstallDir)\Kingmaker_Data\Managed\DOTween*.dll" Private="false" />
+	</ItemGroup>
+	<ItemGroup>
+		<Compile Include="..\BuffIt2TheLimit\BubbleBuff.cs" />
+		<Compile Include="..\BuffIt2TheLimit\BufferState.cs" />
+		<Compile Include="..\BuffIt2TheLimit\BuffExecutor.cs" />
+		<Compile Include="..\BuffIt2TheLimit\IBeneficialEffect.cs" />
+		<Compile Include="..\BuffIt2TheLimit\SaveState.cs" />
+		<Compile Include="..\BuffIt2TheLimit\ShortcutBinding.cs" />
+		<Compile Include="..\BuffIt2TheLimit\PadGroups.cs" />
+		<Compile Include="..\BuffIt2TheLimit\PadQuickMenu.cs" />
+		<Compile Include="..\BuffIt2TheLimit\PadGestures.cs" />
+		<Compile Include="..\BuffIt2TheLimit\Extensions\ExtentionMethods.cs" />
+		<Compile Include="..\BuffIt2TheLimit\CoreTypes.cs" />
+		<Compile Include="..\BuffIt2TheLimit\Config\ModSettings.cs" />
+		<Compile Include="*.cs" />
+	</ItemGroup>
+	<ItemGroup>
+		<EmbeddedResource Include="..\BuffIt2TheLimit\Config\en_GB.json" LogicalName="BuffIt2TheLimit.Config.en_GB.json" />
+		<EmbeddedResource Include="..\BuffIt2TheLimit\Config\de_DE.json" LogicalName="BuffIt2TheLimit.Config.de_DE.json" />
+		<EmbeddedResource Include="..\BuffIt2TheLimit\Config\fr_FR.json" LogicalName="BuffIt2TheLimit.Config.fr_FR.json" />
+		<EmbeddedResource Include="..\BuffIt2TheLimit\Config\ru_RU.json" LogicalName="BuffIt2TheLimit.Config.ru_RU.json" />
+		<EmbeddedResource Include="..\BuffIt2TheLimit\Config\zh_CN.json" LogicalName="BuffIt2TheLimit.Config.zh_CN.json" />
+		<None Include="Info.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+		<PackageReference Include="BepInEx.AssemblyPublicizer.MSBuild" IncludeAssets="build; contentfiles" Version="0.4.2" PrivateAssets="all" />
+	</ItemGroup>
+</Project>

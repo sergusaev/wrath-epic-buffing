@@ -41,7 +41,7 @@ namespace BuffIt2TheLimit {
                 }
             }
 
-            var assigned = state?.BuffList?.Where(b => b.InGroups.Contains(group) && b.Requested > 0)
+            var assigned = state?.BuffList?.Where(b => b.ActiveIn(group))
                                            .OrderBy(b => b.Name)
                                            .ToList() ?? new List<BubbleBuff>();
 

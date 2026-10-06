@@ -51,7 +51,7 @@ namespace BuffIt2TheLimit {
                 if (SecondaryWeaponEnchants != null)
                      some = some.Concat(SecondaryWeaponEnchants);
 
-                return some.Select(x => (Resources.GetBlueprint<SimpleBlueprint>(new BlueprintGuid(x)).name, x));
+                return some.Select(x => (Resources.GetBlueprint<SimpleBlueprint>(x.ToString("N")).name, x));
             }
         }
 
@@ -139,6 +139,7 @@ namespace BuffIt2TheLimit {
             // weapon-enchant overlap below can never match. The game books every pool-applied
             // enchant fact in UnitPartEnchantPoolData; a booked fact still live on the item
             // means the ability's effect is active (unequip/expiry remove the fact).
+#if !KINGMAKER
             if (EnchantPools != null) {
                 var poolData = unitBuffData.Unit.Get<UnitPartEnchantPoolData>();
                 if (poolData != null) {
@@ -156,6 +157,7 @@ namespace BuffIt2TheLimit {
                     }
                 }
             }
+#endif
 
             // Magic Weapon / Greater Magic Weapon's m_Enchantment list is the standard
             // Enhancement1..5 blueprints — those same GUIDs are permanently baked into
@@ -186,6 +188,13 @@ namespace BuffIt2TheLimit {
 
         public readonly bool Empty = true;
         public bool IsLong { get; private set; }
+        // Longest duration among the applied effects.
+        public BuffDuration Duration { get; private set; }
+
+        internal void NoteDuration(BuffDuration duration) {
+            if (duration > Duration)
+                Duration = duration;
+        }
     }
 
     public interface IBeneficialEffect {
@@ -196,14 +205,17 @@ namespace BuffIt2TheLimit {
 
         public readonly Guid Applied;
         public readonly bool IsLong;
-        public AreaBuffEffect(AbilityAreaEffectBuff action, bool isLong) {
-            Applied = action.Buff.AssetGuid.m_Guid;
+        public readonly BuffDuration Duration;
+        public AreaBuffEffect(AbilityAreaEffectBuff action, bool isLong, BuffDuration duration) {
+            Applied = action.Buff.Gid();
             IsLong = isLong;
+            Duration = duration;
         }
 
         public PetType? PetType { get; set; }
 
         public void AppendTo(AbilityCombinedEffects effect) {
+            effect.NoteDuration(Duration);
             if (PetType != null)
                 effect.AddPetBuff(Applied, PetType.Value, IsLong);
             else
@@ -215,10 +227,12 @@ namespace BuffIt2TheLimit {
 
         public readonly Guid Applied = Guid.Empty;
         public readonly bool IsLong;
+        public readonly BuffDuration Duration;
         public  BuffEffect(ContextActionApplyBuff action) {
             if (action.Buff == null) return;
-            Applied = action.Buff.AssetGuid.m_Guid;
+            Applied = action.Buff.Gid();
             IsLong = action.IsLong();
+            Duration = action.Duration();
         }
 
         public BuffEffect(Guid applied) {
@@ -229,6 +243,8 @@ namespace BuffIt2TheLimit {
         public PetType? PetType { get; set; }
 
         public void AppendTo(AbilityCombinedEffects effect) {
+            if (Applied != Guid.Empty)
+                effect.NoteDuration(Duration);
             if (Applied != Guid.Empty) {
             if (PetType != null)
                 effect.AddPetBuff(Applied, PetType.Value, IsLong);
@@ -247,15 +263,18 @@ namespace BuffIt2TheLimit {
         public PetType? PetType { get; set; }
 
         public WornItemEnchantmentEffect(ContextActionEnchantWornItem action) {
-            Applied = action.Enchantment.AssetGuid.m_Guid;
+            Applied = action.Enchantment.Gid();
             if (action.Slot == Kingmaker.UI.GenericSlot.EquipSlotBase.SlotType.PrimaryHand)
                 PrimaryWeapon = true;
             if (action.Slot == Kingmaker.UI.GenericSlot.EquipSlotBase.SlotType.SecondaryHand)
                 SecondaryWeapon = true;
 
             IsLong = action.IsLong();
+            Duration = action.Duration();
         }
+        public readonly BuffDuration Duration;
         public void AppendTo(AbilityCombinedEffects effect) {
+            effect.NoteDuration(Duration);
             if (PrimaryWeapon)
                 effect.AddPrimaryWeaponEnchant(Applied, IsLong);
             else if (SecondaryWeapon)
@@ -263,6 +282,7 @@ namespace BuffIt2TheLimit {
         }
     }
 
+#if !KINGMAKER
     public class EnhanceWeaponEffect : IBeneficialEffect {
         public readonly HashSet<Guid> Enchantments;
         public readonly bool SecondaryHand;
@@ -274,13 +294,16 @@ namespace BuffIt2TheLimit {
             Enchantments = new HashSet<Guid>(
                 action.m_Enchantment
                     .Where(e => e?.Get() != null)
-                    .Select(e => e.Get().AssetGuid.m_Guid)
+                    .Select(e => e.Get().Gid())
             );
             SecondaryHand = action.UseSecondaryHand;
             IsLong = action.IsLong();
+            Duration = action.DurationValue.Duration();
         }
+        public readonly BuffDuration Duration;
 
         public void AppendTo(AbilityCombinedEffects effect) {
+            effect.NoteDuration(Duration);
             foreach (var enchant in Enchantments) {
                 if (SecondaryHand)
                     effect.AddSecondaryWeaponEnchnant(enchant, IsLong);
@@ -290,6 +313,7 @@ namespace BuffIt2TheLimit {
         }
     }
 
+#endif
     public class WeaponEnchantPoolEffect : IBeneficialEffect {
         public readonly HashSet<Guid> DefaultEnchantments;
         public readonly EnchantPoolType Pool;
@@ -302,14 +326,19 @@ namespace BuffIt2TheLimit {
             DefaultEnchantments = new HashSet<Guid>(
                 action.DefaultEnchantments
                     .Where(e => e != null)
-                    .Select(e => e.AssetGuid.m_Guid)
+                    .Select(e => e.Gid())
             );
             Pool = action.EnchantPool;
+#if !KINGMAKER
             SecondaryHand = action.EnchantSecondaryHandInstead;
+#endif
             IsLong = action.IsLong();
+            Duration = action.DurationValue.Duration();
         }
+        public readonly BuffDuration Duration;
 
         public void AppendTo(AbilityCombinedEffects effect) {
+            effect.NoteDuration(Duration);
             effect.AddEnchantPool(Pool, IsLong);
             foreach (var enchant in DefaultEnchantments) {
                 if (SecondaryHand)

@@ -26,7 +26,9 @@ using Kingmaker.Blueprints.Classes;
 using Kingmaker.Blueprints.Classes.Spells;
 using Kingmaker.UnitLogic.ActivatableAbilities;
 using Kingmaker.UnitLogic.Parts;
+#if !KINGMAKER
 using Kingmaker.Craft;
+#endif
 
 namespace BuffIt2TheLimit {
 
@@ -54,7 +56,7 @@ namespace BuffIt2TheLimit {
             for (int characterIndex = 0; characterIndex < Group.Count; characterIndex++) {
                 UnitEntityData dude = Group[characterIndex];
                 Main.Verbose($"Looking at dude: ${dude.CharacterName}", "state");
-                foreach (var book in dude.Spellbooks) {
+                foreach (var book in dude.Descriptor.Spellbooks) {
                     try {
                         Main.Verbose($"  Looking at spellbook: {book.Blueprint.DisplayName}", "state");
                         foreach (var spell in book.GetCustomSpells(0)) {
@@ -83,7 +85,11 @@ namespace BuffIt2TheLimit {
                                     charIndex: characterIndex);
                         }
 
+#if KINGMAKER
+                        if (false) {
+#else
                         if (book.Blueprint.IsArcanist) {
+#endif
                             for (int level = 1; level <= book.LastSpellbookLevel; level++) {
                                 Main.Verbose($"    Looking at arcanist level {level}", "state");
                                 ReactiveProperty<int> credits = new ReactiveProperty<int>(book.GetSpellsPerDay(level));
@@ -100,7 +106,11 @@ namespace BuffIt2TheLimit {
                                 }
                             }
                         } else if (book.Blueprint.Spontaneous) {
+#if KINGMAKER
+                            bool isMagicDeceiver = false;
+#else
                             bool isMagicDeceiver = book.Blueprint.GetComponent<MagicHackSpellbookComponent>() != null;
+#endif
                             for (int level = 1; level <= book.LastSpellbookLevel; level++) {
                                 ReactiveProperty<int> credits = new ReactiveProperty<int>(book.GetSpellsPerDay(level));
                                 foreach (var spell in book.GetKnownSpells(level)) {
@@ -132,6 +142,7 @@ namespace BuffIt2TheLimit {
                             // whose SpellsPerDay table caps lower) and the existing loop misses
                             // those slots. Re-walk the whole array; AddProvider deduplicates
                             // entries already discovered above.
+#if !KINGMAKER
                             if (isMagicDeceiver && book.m_CustomSpells != null) {
                                 for (int level = 1; level < book.m_CustomSpells.Length; level++) {
                                     var bucket = book.m_CustomSpells[level];
@@ -150,6 +161,7 @@ namespace BuffIt2TheLimit {
                                     }
                                 }
                             }
+#endif
                         } else {
                             foreach (var slot in book.GetAllMemorizedSpells()) {
                                 Main.Verbose($"      Adding prepared buff: {slot.Spell.Name}", "state");
@@ -179,7 +191,7 @@ namespace BuffIt2TheLimit {
                         if (sourceItem == null || !sourceItem.IsSpendCharges) {
                             var credits = new ReactiveProperty<int>(500);
                             if (ability.Data.Resource != null) {
-                                credits.Value = ability.Data.Resource.GetMaxAmount(dude);
+                                credits.Value = ability.Data.Resource.GetMaxAmount(dude.Descriptor);
                             }
                             AddBuff(dude: dude,
                                     book: null,
@@ -219,6 +231,7 @@ namespace BuffIt2TheLimit {
                 }
             }
 
+#if !KINGMAKER
             try {
                 if (SavedState.ScrollsEnabled || SavedState.PotionsEnabled || SavedState.EquipmentEnabled) {
                     // Group usable items by blueprint to share credits across stacks
@@ -340,7 +353,9 @@ namespace BuffIt2TheLimit {
             } catch (Exception ex) {
                 Main.Error(ex, "finding scrolls/potions");
             }
+#endif
 
+#if !KINGMAKER
             try {
                 if (SavedState.EquipmentEnabled) {
                     // Scan quickslot items for activatable equipment buffs (wands, rods, etc.)
@@ -402,6 +417,7 @@ namespace BuffIt2TheLimit {
             } catch (Exception ex) {
                 Main.Error(ex, "finding equipment buffs");
             }
+#endif
 
             try {
                 for (int characterIndex = 0; characterIndex < Group.Count; characterIndex++) {
@@ -422,6 +438,7 @@ namespace BuffIt2TheLimit {
                     //     the UI. Do NOT deduplicate these conversions.
                     //
                     // Distinguishing check: blueprint.GetComponent<ActivationDisable>() != null → Pattern A.
+#if !KINGMAKER
                     var shifterFuryConversions = new HashSet<BlueprintGuid>();
                     foreach (var candidate in dude.ActivatableAbilities.RawFacts) {
                         if (candidate.ConversionsProvider is ShiftersFury) {
@@ -431,7 +448,8 @@ namespace BuffIt2TheLimit {
                         }
                     }
 
-                    foreach (var activatable in dude.ActivatableAbilities.RawFacts) {
+#endif
+                    foreach (var activatable in dude.ActivatableAbilities.RawFacts.OfType<ActivatableAbility>()) {
                         var blueprint = activatable.Blueprint;
                         var srcItem = activatable.SourceItem;
 
@@ -439,6 +457,11 @@ namespace BuffIt2TheLimit {
                         // pins CanTurnOn() to false. Shifter's Fury is the special case that stays
                         // scannable — BuffExecutor.ResolveActivationTarget dispatches it onto its
                         // per-weapon conversion at activation time.
+#if KINGMAKER
+                        if (blueprint.GetComponent<ActivatableAbilityResourceLogic>() == null && blueprint.Buff == null) {
+                            continue;
+                        }
+#else
                         if (blueprint.GetComponent<ActivationDisable>() != null
                             && !(activatable.ConversionsProvider is ShiftersFury)) {
                             Main.Verbose($"      SKIP activation-disabled parent: {blueprint.Name} for {dude.CharacterName}", "rejection");
@@ -450,6 +473,7 @@ namespace BuffIt2TheLimit {
                             Main.Verbose($"      SKIP Shifter's Fury conversion: {blueprint.Name} for {dude.CharacterName}", "rejection");
                             continue;
                         }
+#endif
 
                         if (srcItem != null) {
                             if (!SavedState.EquipmentEnabled) continue;
@@ -602,7 +626,7 @@ namespace BuffIt2TheLimit {
             RefreshItemStock();
 
             var ordered = priorityGroup.HasValue
-                ? BuffList.OrderByDescending(b => b.InGroups.Contains(priorityGroup.Value))
+                ? BuffList.OrderByDescending(b => b.ActiveIn(priorityGroup.Value))
                 : BuffList;
 
             foreach (var gbuff in ordered)
@@ -657,6 +681,7 @@ namespace BuffIt2TheLimit {
                 save.Blacklisted = buff.HideBecause(HideReason.Blacklisted);
                 save.InGroups = new HashSet<BuffGroup>(buff.InGroups);
                 save.InGroup = buff.InGroups.Count > 0 ? buff.InGroups.First() : BuffGroup.Long;
+                save.DisabledIn = buff.DisabledIn.Count > 0 ? new HashSet<BuffGroup>(buff.DisabledIn) : null;
 
                 if (buff.IgnoreForOverwriteCheck.Count > 0) {
                     save.IgnoreForOverwriteCheck = buff.IgnoreForOverwriteCheck.Select(g => g.ToString()).ToArray();
@@ -717,12 +742,14 @@ namespace BuffIt2TheLimit {
                         if (save.Wanted.Empty() && save.IgnoreForOverwriteCheck.Empty()
                             && !buff.HideBecause(HideReason.Blacklisted)
                             && buff.InGroups.SetEquals(DefaultGroups)
+                            && buff.DisabledIn.Count == 0
                             && !hasSavedCasterConfig(save)) {
                             SavedState.Buffs.Remove(key);
                         }
                     } else if (buff.Requested > 0 || buff.IgnoreForOverwriteCheck.Count > 0
                                || buff.HideBecause(HideReason.Blacklisted)
                                || !buff.InGroups.SetEquals(DefaultGroups)
+                               || buff.DisabledIn.Count > 0
                                || hasCasterConfig(buff)) {
                         save = new();
                         save.Wanted = new HashSet<string>();
@@ -832,14 +859,18 @@ namespace BuffIt2TheLimit {
             //    return;
             //} 
 
-            if (spell.Blueprint.AssetGuid.m_Guid == MageArmorGuid && !archmageArmor && dude.HasFact(ArchmageArmorFeature)) {
+            #if KINGMAKER
+            if (false) {
+#else
+            if (spell.Blueprint.Gid() == MageArmorGuid && !archmageArmor && dude.Descriptor.HasFact(ArchmageArmorFeature)) {
+#endif
                 Main.Verbose($"        Adding archmage armor", "state");
                 AddBuff(dude, book, spell, null, credits, false, creditClamp, charIndex, true, category, BuffSourceType.Spell, null);
             }
 
 
             if (spell.Blueprint.HasVariants) {
-                var variantsComponent = spell.Blueprint.AbilityVariants;
+                var variantsComponent = spell.Blueprint.GetComponent<AbilityVariants>();
                 Main.Verbose($"        Adding variants...", "state");
 
                 //Only credit the first variant each time (they act like spontaneous and should share the same credit)
@@ -879,9 +910,10 @@ namespace BuffIt2TheLimit {
                 bool isAbilityCategory = category == Category.Ability;
                 bool isClassAbility = isAbilityCategory && sourceItem == null;
 
-                if (!SpellsWithBeneficialBuffs.TryGetValue(spell.Blueprint.AssetGuid.m_Guid, out var abilityEffect)) {
+                if (!SpellsWithBeneficialBuffs.TryGetValue(spell.Blueprint.Gid(), out var abilityEffect)) {
                     IEnumerable<IBeneficialEffect> beneficial;
                     var absenceChecked = new HashSet<Guid>();
+#if !KINGMAKER
                     if (spell.MagicHackData != null) {
                         // Fused spells (Magic Deceiver): template blueprint has empty actions.
                         // Check component spells instead.
@@ -893,13 +925,15 @@ namespace BuffIt2TheLimit {
                         if (spell.MagicHackData.Spell1 != null) absenceChecked.UnionWith(spell.MagicHackData.Spell1.GetAbsenceCheckedFacts());
                         if (spell.MagicHackData.Spell2 != null) absenceChecked.UnionWith(spell.MagicHackData.Spell2.GetAbsenceCheckedFacts());
                         Main.Verbose($"        Fused spell {spell.Name}: checking components {spell.MagicHackData.Spell1?.Name} + {spell.MagicHackData.Spell2?.Name}", "state");
-                    } else {
+                    } else
+#endif
+                    {
                         beneficial = spell.Blueprint.GetBeneficialBuffs(skipDamageFilter: isAbilityCategory);
                         absenceChecked = spell.Blueprint.GetAbsenceCheckedFacts();
                     }
                     abilityEffect = new AbilityCombinedEffects(beneficial, absenceChecked);
-                    SpellsWithBeneficialBuffs[spell.Blueprint.AssetGuid.m_Guid] = abilityEffect;
-                    SpellNames[spell.Blueprint.AssetGuid.m_Guid] = spell.Name;
+                    SpellsWithBeneficialBuffs[spell.Blueprint.Gid()] = abilityEffect;
+                    SpellNames[spell.Blueprint.Gid()] = spell.Name;
                 }
 
                 if (abilityEffect.Empty) {
@@ -934,12 +968,14 @@ namespace BuffIt2TheLimit {
 
         private static readonly HashSet<ActivatableAbilityGroup> PerformanceGroups = new() {
             ActivatableAbilityGroup.BardicPerformance,
+#if !KINGMAKER
             ActivatableAbilityGroup.AzataMythicPerformance
+#endif
         };
 
         public void AddActivatable(UnitEntityData dude, ActivatableAbility activatable, int charIndex, Category category, ItemEntity sourceItem = null) {
             var blueprint = activatable.Blueprint;
-            var key = new BuffKey(blueprint.AssetGuid);
+            var key = new BuffKey(blueprint.Gid());
 
             BuffSourceType sourceType;
             if (category == Category.Song) sourceType = BuffSourceType.Song;
@@ -981,7 +1017,7 @@ namespace BuffIt2TheLimit {
         }
 
         private bool CanUseItemWithUmd(UnitEntityData dude, BlueprintAbility spell, int dc) {
-            bool onClassList = dude.Spellbooks.Any(book =>
+            bool onClassList = dude.Descriptor.Spellbooks.Any(book =>
                 book.Blueprint.SpellList?.SpellsByLevel?.Any(level =>
                     level.Spells.Any(s => s == spell)) == true);
             if (onClassList) return true;
@@ -993,6 +1029,7 @@ namespace BuffIt2TheLimit {
             return (umdBonus + 20) >= dc;
         }
 
+#if !KINGMAKER
         /// <summary>
         /// Caster level of an item cast, mirroring AbilityData.GetParamsFromItem.
         /// Our synthetic AbilityData has no SourceItem (it isn't backed by an item-granted
@@ -1016,6 +1053,7 @@ namespace BuffIt2TheLimit {
 
             return casterLevel;
         }
+#endif
 
         private List<string> lastGroup = new();
         internal bool InputDirty = true;

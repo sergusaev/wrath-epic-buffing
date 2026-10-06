@@ -66,13 +66,18 @@ namespace BuffIt2TheLimit.Config {
                 BuffGroup.Long => "group.normal.log".i8(),
                 BuffGroup.Quick => "group.short.log".i8(),
                 BuffGroup.Important => "group.important.log".i8(),
-                _ => "<unknown>"
+                _ => PadGroups.Name(buffGroup)
             };
 
         }
 
     }
 
+#if KINGMAKER
+    static class ModSettings {
+        public static ModEntry ModEntry;
+    }
+#else
     static class ModSettings {
         public static ModEntry ModEntry;
         public static Fixes Fixes;
@@ -111,4 +116,5 @@ namespace BuffIt2TheLimit.Config {
             File.WriteAllText(userPath, JsonConvert.SerializeObject(setting, Formatting.Indented));
         }
     }
+#endif
 }

@@ -2,7 +2,12 @@ using BuffIt2TheLimit.Config;
 using BuffIt2TheLimit.Extensions;
 using Kingmaker;
 using Kingmaker.EntitySystem.Entities;
+#if KINGMAKER
+using Kingmaker.Assets.Console.GamepadInput;
+using Kingmaker.Blueprints.Console;
+#else
 using Owlcat.Runtime.UI.ConsoleTools.GamepadInput;
+#endif
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -12,73 +17,124 @@ using UnityEngine.UI;
 
 namespace BuffIt2TheLimit {
 
-    // Gamepad-mode buff menu with two pages.
+    // Gamepad-mode buff menu.
     // Main: per-group status, apply one group or all groups in sequence, combat toggle, cast report.
-    // Editor: buff list by tab, targets per party member, group assignment.
+    // Groups: list of groups, create / rename / hide / delete.
+    // Members: buffs of one group, add and remove, on/off tick, auto-fill by duration.
+    // Name: on-screen keyboard for a group name and its duration.
+    // Editor: targets per party member for each buff.
     // Buttons go through the game's console input layer (the world and HUD are blocked while
     // the menu is open); directions are polled from the Rewired player for hold-to-repeat.
     internal class PadQuickMenu : MonoBehaviour {
 
-        private enum Page { Main, Editor, Help }
-
-        private enum Tab { Assigned, All, Long, Quick, Important }
+        private enum Page { Main, Groups, Members, Name, Editor, Help }
 
         private static PadQuickMenu instance;
-        private static readonly BuffGroup[] Groups = { BuffGroup.Long, BuffGroup.Quick, BuffGroup.Important };
-        private static readonly Tab[] Tabs = { Tab.Assigned, Tab.All, Tab.Long, Tab.Quick, Tab.Important };
 
         private static readonly Color PanelColor = new(0.06f, 0.05f, 0.04f, 0.94f);
         private static readonly Color RowColor = new(1f, 1f, 1f, 0.04f);
+        private static readonly Color RowOutsideColor = new(1f, 1f, 1f, 0.015f);
         private static readonly Color RowSelectedColor = new(0.62f, 0.47f, 0.2f, 0.55f);
         private static readonly Color ChipColor = new(1f, 1f, 1f, 0.06f);
         private static readonly Color ChipWantedColor = new(0.3f, 0.55f, 0.28f, 0.75f);
         private static readonly Color ChipCursorColor = new(0.85f, 0.66f, 0.28f, 0.9f);
         private static readonly Color ChipCursorWantedColor = new(0.55f, 0.75f, 0.3f, 0.95f);
+        private static readonly Color BoxColor = new(0.85f, 0.8f, 0.7f, 0.85f);
+        private static readonly Color BoxInnerColor = new(0.08f, 0.07f, 0.06f, 1f);
+        private static readonly Color TickColor = new(0.5f, 0.82f, 0.4f, 1f);
+        private static readonly Color KeyColor = new(1f, 1f, 1f, 0.07f);
         private static readonly Color TitleColor = new(0.93f, 0.8f, 0.5f);
         private static readonly Color TextColor = new(0.92f, 0.9f, 0.85f);
         private static readonly Color DimColor = new(0.65f, 0.62f, 0.56f);
 
-        private const float MainWidth = 820f;
-        private const float EditorWidth = 1180f;
+        private const float MainWidth = 1000f;
+        private const float WideWidth = 1180f;
         private const int VisibleRows = 10;
+        private const int MemberRows = 12;
         private const float StickThreshold = 0.5f;
         private const float RepeatDelay = 0.35f;
         private const float RepeatInterval = 0.08f;
         private const float RoutineTimeout = 30f;
+        private const float DeleteConfirmTime = 3f;
 
         private GameObject overlay;
         private RectTransform panel;
         private TextMeshProUGUI titleText;
+        private TMP_FontAsset font;
         private IDisposable layerHandle;
         private Page page;
         private float nextRefresh;
         private bool recalcTried;
 
+        // main
         private GameObject mainRoot;
-        private readonly List<(Image bg, TextMeshProUGUI text)> rows = new();
+        private Transform mainRowHolder;
+        private readonly List<ListRow> rows = new();
+        private List<BuffGroup> mainGroups = new();
         private TextMeshProUGUI reportText;
         private int selected;
 
+        // groups
+        private GameObject groupsRoot;
+        private Transform groupsRowHolder;
+        private readonly List<ListRow> groupRows = new();
+        private List<BuffGroup> groupList = new();
+        private TextMeshProUGUI groupsNote;
+        private int groupsCursor;
+        private BuffGroup? deleteArmed;
+        private float deleteArmedUntil;
+
+        // members
+        private GameObject membersRoot;
+        private TextMeshProUGUI membersTabText;
+        private readonly List<ListRow> memberRows = new();
+        private TextMeshProUGUI membersDetail;
+        private TextMeshProUGUI membersNote;
+        private BuffGroup memberGroup;
+        private List<BubbleBuff> memberList = new();
+        private int memberCount;
+        private int memberCursor;
+        private int memberTop;
+        private Page membersBack;
+
+        // name
+        private GameObject nameRoot;
+        private TextMeshProUGUI nameText;
+        private TextMeshProUGUI nameDurationText;
+        private Transform keyHolder;
+        private readonly List<List<(Image bg, TextMeshProUGUI text, string key)>> keys = new();
+        private BuffGroup? nameTarget;
+        private string nameBuffer = "";
+        private int nameDuration;
+        private bool latin;
+        private bool shift;
+        private int keyRow;
+        private int keyCol;
+
+        // editor
         private GameObject editorRoot;
-        private GameObject helpRoot;
-        private TextMeshProUGUI helpText;
-        private List<string> helpLines = new();
-        private int helpTop;
-        private const int HelpVisibleLines = 20;
         private TextMeshProUGUI tabText;
-        private readonly List<(Image bg, TextMeshProUGUI text)> listRows = new();
+        private readonly List<ListRow> listRows = new();
         private TextMeshProUGUI detailText;
         private Transform chipHolder;
         private readonly List<(Image bg, TextMeshProUGUI text)> chips = new();
-        private TMP_FontAsset font;
         private int tab;
         private int cursor;
         private int top;
         private int partyCol;
         private List<BubbleBuff> filtered = new();
+        private Page editorBack;
+
+        // help
+        private GameObject helpRoot;
+        private TextMeshProUGUI helpText;
+        private List<string> helpLines = new();
+        private int helpTop;
+        private const int HelpVisibleLines = 22;
 
         private RepeatInput vertical;
         private RepeatInput horizontal;
+        private bool holdDirections;
 
         private readonly Queue<BuffGroup> pending = new();
         private BuffGroup current;
@@ -87,14 +143,22 @@ namespace BuffIt2TheLimit {
         private float waitDeadline;
         private readonly List<string> report = new();
 
-        private int MainRowCount => Groups.Length + 3;
-        private int HelpRow => Groups.Length + 2;
-        private int CombatRow => Groups.Length;
-        private int EditorRow => Groups.Length + 1;
+        private int CombatRow => mainGroups.Count;
+        private int GroupsRow => mainGroups.Count + 1;
+        private int EditorRow => mainGroups.Count + 2;
+        private int HelpRow => mainGroups.Count + 3;
+        private int MainRowCount => mainGroups.Count + 4;
 
         private static BufferState State => GlobalBubbleBuffer.Instance?.SpellbookController?.state;
 
         public static bool IsOpen => instance != null && instance.gameObject.activeSelf;
+
+        private class ListRow {
+            public Image Bg;
+            public GameObject Box;
+            public Image Tick;
+            public TextMeshProUGUI Text;
+        }
 
         public static void Toggle() {
             Main.Log($"[PAD] toggle, open={IsOpen}");
@@ -147,14 +211,24 @@ namespace BuffIt2TheLimit {
             try {
                 PollButtons();
                 PollDirections();
-                if (Input.GetKeyDown(KeyCode.Return)) OnConfirm();
-                if (Input.GetKeyDown(KeyCode.Backspace)) OnDecline();
+                if (page == Page.Name) {
+                    PollTyping();
+                } else {
+                    if (Input.GetKeyDown(KeyCode.Return)) OnConfirm();
+                    if (Input.GetKeyDown(KeyCode.Backspace)) OnDecline();
+                }
 
                 if (waiting && Time.unscaledTime > waitDeadline) {
                     Main.Log($"[PAD] no result for {current} after {RoutineTimeout}s");
                     waiting = false;
-                    ReplaceLast(string.Format("pad.timeout".i8(), GroupName(current)));
+                    ReplaceLast(string.Format("pad.timeout".i8(), PadGroups.Name(current)));
                     RunNext();
+                }
+
+                if (deleteArmed != null && Time.unscaledTime > deleteArmedUntil) {
+                    deleteArmed = null;
+                    if (page == Page.Groups)
+                        RenderGroups();
                 }
 
                 if (page == Page.Main && Time.unscaledTime >= nextRefresh)
@@ -169,6 +243,11 @@ namespace BuffIt2TheLimit {
         private void PushInput() {
             if (layerHandle != null)
                 return;
+#if KINGMAKER
+            // In mouse mode the game has no console input layers; buttons are polled instead.
+            if (!Game.Instance.IsControllerGamepad)
+                return;
+#endif
             var pad = GamePad.Instance;
             if (pad == null)
                 return;
@@ -217,8 +296,8 @@ namespace BuffIt2TheLimit {
                 case RewiredActionType.Decline: OnDecline(); break;
                 case RewiredActionType.Func01: OnFuncX(); break;
                 case RewiredActionType.Func02: OnFuncY(); break;
-                case RewiredActionType.LeftUp: SwitchTab(-1); break;
-                case RewiredActionType.RightUp: SwitchTab(1); break;
+                case RewiredActionType.LeftUp: OnShoulder(-1); break;
+                case RewiredActionType.RightUp: OnShoulder(1); break;
             }
         }
 
@@ -320,60 +399,144 @@ namespace BuffIt2TheLimit {
             if (v == 0) v = Input.GetKey(KeyCode.UpArrow) ? -1 : Input.GetKey(KeyCode.DownArrow) ? 1 : 0;
             if (h == 0) h = Input.GetKey(KeyCode.LeftArrow) ? -1 : Input.GetKey(KeyCode.RightArrow) ? 1 : 0;
 
+            // A direction still held from the previous page does nothing until it is released.
+            if (holdDirections) {
+                if (v != 0 || h != 0)
+                    return;
+                holdDirections = false;
+            }
+
             int dv = vertical.Step(v);
             int dh = horizontal.Step(h);
             if (dv != 0) MoveVertical(dv);
-            if (dh != 0 && page == Page.Editor) MovePartyCursor(dh);
+            if (dh != 0) MoveHorizontal(dh);
         }
 
         private void OnConfirm() {
-            if (page == Page.Editor) {
-                ToggleTarget();
-                return;
+            switch (page) {
+                case Page.Main:
+                    if (selected < mainGroups.Count)
+                        Enqueue(new[] { mainGroups[selected] });
+                    else if (selected == CombatRow)
+                        ToggleAllowInCombat();
+                    else if (selected == GroupsRow)
+                        ShowPage(Page.Groups);
+                    else if (selected == EditorRow)
+                        OpenEditor(Page.Main, null);
+                    else if (selected == HelpRow)
+                        ShowPage(Page.Help);
+                    break;
+                case Page.Groups:
+                    if (groupsCursor < groupList.Count)
+                        OpenMembers(groupList[groupsCursor], Page.Groups);
+                    else
+                        OpenName(null);
+                    break;
+                case Page.Members: ToggleMembership(); break;
+                case Page.Name: PressKey(); break;
+                case Page.Editor: ToggleTarget(); break;
             }
-            if (selected == CombatRow)
-                ToggleAllowInCombat();
-            else if (selected == EditorRow)
-                ShowPage(Page.Editor);
-            else if (selected == HelpRow)
-                ShowPage(Page.Help);
-            else
-                Enqueue(new[] { Groups[selected] });
         }
 
         private void OnDecline() {
-            if (page != Page.Main)
-                ShowPage(Page.Main);
-            else
-                Close();
+            switch (page) {
+                case Page.Main: Close(); break;
+                case Page.Members: ShowPage(membersBack); break;
+                case Page.Name: ShowPage(Page.Groups); break;
+                case Page.Editor:
+                    if (editorBack == Page.Members)
+                        OpenMembers(memberGroup, membersBack, SelectedBuff);
+                    else
+                        ShowPage(editorBack);
+                    break;
+                default: ShowPage(Page.Main); break;
+            }
         }
 
         private void OnFuncX() {
-            if (page == Page.Editor)
-                CycleGroup();
-            else
-                Enqueue(Groups);
+            switch (page) {
+                case Page.Main: Enqueue(mainGroups); break;
+                case Page.Groups: ToggleHidden(); break;
+                case Page.Members: ToggleTick(); break;
+                case Page.Name: Backspace(); break;
+                case Page.Editor: AutoTargets(); break;
+            }
         }
 
         private void OnFuncY() {
-            if (page == Page.Editor)
-                ToggleWholeParty();
-            else
-                ShowPage(Page.Editor);
+            switch (page) {
+                case Page.Main:
+                    if (selected < mainGroups.Count)
+                        OpenMembers(mainGroups[selected], Page.Main);
+                    else
+                        ShowPage(Page.Groups);
+                    break;
+                case Page.Groups:
+                    if (groupsCursor < groupList.Count)
+                        OpenName(groupList[groupsCursor]);
+                    break;
+                case Page.Members: AutoFill(); break;
+                case Page.Name: FinishName(); break;
+                case Page.Editor: ToggleWholeParty(); break;
+            }
+        }
+
+        private void OnShoulder(int delta) {
+            switch (page) {
+                case Page.Groups:
+                    if (delta > 0) DeleteGroup();
+                    break;
+                case Page.Members: SwitchMemberGroup(delta); break;
+                case Page.Name: CycleDuration(delta); break;
+                case Page.Editor: SwitchTab(delta); break;
+            }
         }
 
         private void MoveVertical(int delta) {
-            if (page == Page.Main) {
-                selected = Mathf.Clamp(selected + delta, 0, MainRowCount - 1);
-                UpdateMainSelection();
-            } else if (page == Page.Help) {
-                helpTop = Mathf.Clamp(helpTop + delta, 0, Mathf.Max(0, helpLines.Count - HelpVisibleLines));
-                RenderHelp();
-            } else {
-                if (filtered.Count == 0)
-                    return;
-                cursor = Mathf.Clamp(cursor + delta, 0, filtered.Count - 1);
-                RenderEditor();
+            switch (page) {
+                case Page.Main:
+                    selected = Mathf.Clamp(selected + delta, 0, MainRowCount - 1);
+                    UpdateMainSelection();
+                    break;
+                case Page.Groups:
+                    groupsCursor = Mathf.Clamp(groupsCursor + delta, 0, GroupsRowCount - 1);
+                    RenderGroups();
+                    break;
+                case Page.Members:
+                    if (memberList.Count == 0)
+                        return;
+                    memberCursor = Mathf.Clamp(memberCursor + delta, 0, memberList.Count - 1);
+                    RenderMembers();
+                    break;
+                case Page.Name:
+                    keyRow = Mathf.Clamp(keyRow + delta, 0, keys.Count - 1);
+                    keyCol = Mathf.Min(keyCol, keys[keyRow].Count - 1);
+                    RenderKeys();
+                    break;
+                case Page.Editor:
+                    if (filtered.Count == 0)
+                        return;
+                    cursor = Mathf.Clamp(cursor + delta, 0, filtered.Count - 1);
+                    RenderEditor();
+                    break;
+                case Page.Help:
+                    helpTop = Mathf.Clamp(helpTop + delta, 0, Mathf.Max(0, helpLines.Count - HelpVisibleLines));
+                    RenderHelp();
+                    break;
+            }
+        }
+
+        private void MoveHorizontal(int delta) {
+            switch (page) {
+                case Page.Members:
+                    if (delta > 0 && SelectedMember != null)
+                        OpenEditor(Page.Members, SelectedMember);
+                    break;
+                case Page.Name:
+                    keyCol = Mathf.Clamp(keyCol + delta, 0, keys[keyRow].Count - 1);
+                    RenderKeys();
+                    break;
+                case Page.Editor: MovePartyCursor(delta); break;
             }
         }
 
@@ -381,25 +544,38 @@ namespace BuffIt2TheLimit {
 
         private void ShowPage(Page next) {
             page = next;
+            holdDirections = true;
             mainRoot.SetActive(page == Page.Main);
+            groupsRoot.SetActive(page == Page.Groups);
+            membersRoot.SetActive(page == Page.Members);
+            nameRoot.SetActive(page == Page.Name);
             editorRoot.SetActive(page == Page.Editor);
             helpRoot.SetActive(page == Page.Help);
-            panel.sizeDelta = new Vector2(page == Page.Main ? MainWidth : EditorWidth, 0);
+            panel.sizeDelta = new Vector2(page == Page.Main || page == Page.Groups ? MainWidth : WideWidth, 0);
             titleText.text = page switch {
                 Page.Main => "pad.title".i8(),
+                Page.Groups => "pad.groups.title".i8(),
+                Page.Members => "pad.members.title".i8(),
+                Page.Name => nameTarget == null ? "pad.name.title.new".i8() : "pad.name.title.rename".i8(),
                 Page.Editor => "pad.editor.title".i8(),
                 _ => "pad.help.title".i8()
             };
-            if (page == Page.Main) {
-                RefreshMain();
-            } else if (page == Page.Help) {
-                EnsureBuffList();
-                helpLines = BuildHelp();
-                helpTop = 0;
-                RenderHelp();
-            } else {
-                EnsureBuffList();
-                RebuildFilter(keepBuff: null);
+            EnsureBuffList();
+            switch (page) {
+                case Page.Main: RefreshMain(); break;
+                case Page.Groups:
+                    groupsNote.text = "";
+                    deleteArmed = null;
+                    RenderGroups();
+                    break;
+                case Page.Members: RebuildMembers(null); break;
+                case Page.Name: RenderName(); break;
+                case Page.Editor: RebuildFilter(keepBuff: null); break;
+                case Page.Help:
+                    helpLines = BuildHelp();
+                    helpTop = 0;
+                    RenderHelp();
+                    break;
             }
         }
 
@@ -413,6 +589,10 @@ namespace BuffIt2TheLimit {
             }
         }
 
+        private static void Commit() {
+            PadGroups.SaveAll();
+        }
+
         // ---------- main page ----------
 
         private void ToggleAllowInCombat() {
@@ -420,8 +600,10 @@ namespace BuffIt2TheLimit {
             if (state == null)
                 return;
             state.AllowInCombat = !state.AllowInCombat;
+#if !KINGMAKER
             // Same refresh the mod runs on combat state changes: re-enables/disables HUD buttons.
             new HideBubbleButtonsWatcher().HandlePartyCombatStateChanged(Game.Instance.Player.IsInCombat);
+#endif
             RefreshMain();
         }
 
@@ -431,7 +613,7 @@ namespace BuffIt2TheLimit {
             if (waiting || pending.Count > 0)
                 return;
             report.Clear();
-            foreach (var g in groups)
+            foreach (var g in groups.ToList())
                 pending.Enqueue(g);
             RunNext();
         }
@@ -443,7 +625,7 @@ namespace BuffIt2TheLimit {
                 current = pending.Dequeue();
                 waiting = true;
                 waitDeadline = Time.unscaledTime + RoutineTimeout;
-                report.Add(string.Format("pad.running".i8(), GroupName(current)));
+                report.Add(string.Format("pad.running".i8(), PadGroups.Name(current)));
                 int before = BuffExecutor.ScheduledRoutines;
                 inExecute = true;
                 try {
@@ -455,7 +637,7 @@ namespace BuffIt2TheLimit {
                 }
                 if (BuffExecutor.ScheduledRoutines == before) {
                     waiting = false;
-                    ReplaceLast(string.Format("pad.blocked".i8(), GroupName(current)));
+                    ReplaceLast(string.Format("pad.blocked".i8(), PadGroups.Name(current)));
                     continue;
                 }
                 if (waiting) {
@@ -475,7 +657,7 @@ namespace BuffIt2TheLimit {
                 return;
             }
             waiting = false;
-            ReplaceLast(string.Format("pad.result".i8(), GroupName(current), applied, attempted, skipped));
+            ReplaceLast(string.Format("pad.result".i8(), PadGroups.Name(current), applied, attempted, skipped));
             foreach (var bad in tooltip.Bad.Take(6)) {
                 var reasons = string.Join("; ", bad.messages.Select(m => m.Trim()).Take(2));
                 report.Add($"   <color=#E08A7A>{bad.buff.Name}</color> {reasons}");
@@ -502,35 +684,43 @@ namespace BuffIt2TheLimit {
 
         private void UpdateMainSelection() {
             for (int i = 0; i < rows.Count; i++)
-                rows[i].bg.color = i == selected ? RowSelectedColor : RowColor;
+                rows[i].Bg.color = i == selected ? RowSelectedColor : RowColor;
         }
 
         private void RefreshMain() {
             nextRefresh = Time.unscaledTime + 1f;
-            UpdateMainSelection();
             try {
-                EnsureBuffList();
+                mainGroups = PadGroups.Visible();
+                EnsureRows(rows, mainRowHolder, MainRowCount, 22, withBox: false);
+                selected = Mathf.Clamp(selected, 0, MainRowCount - 1);
+                UpdateMainSelection();
+
                 var state = State;
-                rows[CombatRow].text.text = CombatRowText(state);
-                rows[EditorRow].text.text = $"<b>{"pad.editor.row".i8()}</b>\n<size=80%>{"pad.editor.row.desc".i8()}</size>";
-                rows[HelpRow].text.text = $"<b>{"pad.help.row".i8()}</b>\n<size=80%>{"pad.help.row.desc".i8()}</size>";
+                rows[CombatRow].Text.text = CombatRowText(state);
+                rows[GroupsRow].Text.text = Line("pad.groups.row".i8(), "pad.groups.row.desc".i8());
+                rows[EditorRow].Text.text = Line("pad.editor.row".i8(), "pad.editor.row.desc".i8());
+                rows[HelpRow].Text.text = Line("pad.help.row".i8(), "pad.help.row.desc".i8());
                 if (state?.BuffList == null) {
-                    for (int i = 0; i < Groups.Length; i++)
-                        rows[i].text.text = $"<b>{GroupName(Groups[i])}</b>\n<size=80%>{"pad.nostate".i8()}</size>";
+                    for (int i = 0; i < mainGroups.Count; i++)
+                        rows[i].Text.text = Line(PadGroups.Name(mainGroups[i]), "pad.nostate".i8());
                     return;
                 }
 
                 Bubble.RefreshGroup();
                 var unitData = Bubble.Group.ToDictionary(u => u.UniqueId, u => new UnitBuffData(u));
 
-                for (int i = 0; i < Groups.Length; i++) {
-                    var group = Groups[i];
-                    int buffs = 0, wanted = 0, active = 0;
+                for (int i = 0; i < mainGroups.Count; i++) {
+                    var group = mainGroups[i];
+                    int buffs = 0, off = 0, wanted = 0, active = 0;
                     TimeSpan? soonest = null;
 
                     foreach (var buff in state.BuffList) {
-                        if (!buff.InGroups.Contains(group) || buff.Requested == 0)
+                        if (!PadGroups.IsMember(buff, group))
                             continue;
+                        if (!buff.ActiveIn(group)) {
+                            off++;
+                            continue;
+                        }
                         buffs++;
                         var guids = new HashSet<Guid>(buff.BuffsApplied?.OwnBuffGuids ?? Enumerable.Empty<Guid>());
 
@@ -546,7 +736,7 @@ namespace BuffIt2TheLimit {
                             if (!present)
                                 continue;
                             active++;
-                            foreach (var fact in unit.Buffs.RawFacts) {
+                            foreach (var fact in unit.Buffs.RawFacts.OfType<Kingmaker.UnitLogic.Buffs.Buff>()) {
                                 if (fact.IsPermanent || !guids.Contains(fact.BGuid()))
                                     continue;
                                 var left = fact.TimeLeft;
@@ -565,12 +755,17 @@ namespace BuffIt2TheLimit {
                         if (soonest.HasValue)
                             status += " · " + string.Format("pad.left".i8(), FormatTime(soonest.Value));
                     }
-                    rows[i].text.text = $"<b>{GroupName(group)}</b>\n<size=80%>{status}</size>";
+                    if (off > 0)
+                        status += $" <color=#8A847A>· {string.Format("pad.status.off".i8(), off)}</color>";
+                    rows[i].Text.text = Line(PadGroups.Name(group), status);
                 }
             } catch (Exception ex) {
                 Main.Error(ex, "PadQuickMenu.RefreshMain");
             }
         }
+
+        private static string Line(string name, string desc) =>
+            $"<b>{Trim(name, 30)}</b><pos=36%><size=85%>{desc}</size>";
 
         private static string CombatRowText(BufferState state) {
             string value = state == null
@@ -578,36 +773,438 @@ namespace BuffIt2TheLimit {
                 : state.AllowInCombat
                     ? $"<color=#9AD08A>{"pad.combat.on".i8()}</color>"
                     : $"<color=#B0A898>{"pad.combat.off".i8()}</color>";
-            return $"<b>{"pad.combat".i8()}</b>\n<size=80%>{value}</size>";
+            return Line("pad.combat".i8(), value);
+        }
+
+        // ---------- groups page ----------
+
+        private int GroupsRowCount => groupList.Count + (PadGroups.CanCreate ? 1 : 0);
+
+        private void RenderGroups() {
+            groupList = PadGroups.All();
+            EnsureRows(groupRows, groupsRowHolder, GroupsRowCount, 21, withBox: false);
+            groupsCursor = Mathf.Clamp(groupsCursor, 0, GroupsRowCount - 1);
+            var state = State;
+            for (int i = 0; i < groupRows.Count; i++) {
+                var row = groupRows[i];
+                row.Bg.color = i == groupsCursor ? RowSelectedColor : RowColor;
+                if (i >= groupList.Count) {
+                    row.Text.text = $"<color=#9AD08A><b>+ {"pad.groups.new".i8()}</b></color>";
+                    continue;
+                }
+                var group = groupList[i];
+                int members = 0, on = 0;
+                if (state?.BuffList != null) {
+                    foreach (var buff in state.BuffList) {
+                        if (!PadGroups.IsMember(buff, group))
+                            continue;
+                        members++;
+                        if (buff.ActiveIn(group))
+                            on++;
+                    }
+                }
+                string visibility = PadGroups.IsHidden(group)
+                    ? $"<color=#8A847A>{"pad.groups.hidden".i8()}</color>"
+                    : "pad.groups.shown".i8();
+                string kind = PadGroups.IsCustom(group) ? "" : $" <color=#8A847A>{"pad.groups.builtin".i8()}</color>";
+                string name = deleteArmed == group
+                    ? $"<color=#E08A7A>{"pad.groups.confirm".i8()}</color>"
+                    : $"<b>{Trim(PadGroups.Name(group), 30)}</b>{kind}";
+                row.Text.text = $"{name}<pos=42%><size=85%>{PadGroups.DurationName(PadGroups.DurationOf(group))}</size>"
+                    + $"<pos=68%><size=85%>{string.Format("pad.groups.count".i8(), members, on)}</size><pos=87%><size=85%>{visibility}</size>";
+            }
+        }
+
+        private void ToggleHidden() {
+            if (groupsCursor >= groupList.Count)
+                return;
+            var group = groupList[groupsCursor];
+            PadGroups.SetHidden(group, !PadGroups.IsHidden(group));
+            RenderGroups();
+        }
+
+        // RB once arms the deletion, a second RB within a few seconds deletes.
+        private void DeleteGroup() {
+            if (groupsCursor >= groupList.Count)
+                return;
+            var group = groupList[groupsCursor];
+            if (!PadGroups.IsCustom(group)) {
+                groupsNote.text = "pad.groups.nodelete".i8();
+                return;
+            }
+            if (deleteArmed != group) {
+                deleteArmed = group;
+                deleteArmedUntil = Time.unscaledTime + DeleteConfirmTime;
+                RenderGroups();
+                return;
+            }
+            string name = PadGroups.Name(group);
+            deleteArmed = null;
+            PadGroups.Delete(group);
+            groupsNote.text = string.Format("pad.groups.deleted".i8(), name);
+            RenderGroups();
+        }
+
+        // ---------- members page ----------
+
+        private BubbleBuff SelectedMember => memberCursor >= 0 && memberCursor < memberList.Count ? memberList[memberCursor] : null;
+
+        private void OpenMembers(BuffGroup group, Page back, BubbleBuff keep = null) {
+            memberGroup = group;
+            membersBack = back;
+            membersNote.text = "";
+            ShowPage(Page.Members);
+            if (keep != null)
+                RebuildMembers(keep);
+        }
+
+        private void SwitchMemberGroup(int delta) {
+            var all = PadGroups.All();
+            int idx = all.IndexOf(memberGroup);
+            memberGroup = all[(idx + delta + all.Count) % all.Count];
+            membersNote.text = "";
+            RebuildMembers(null);
+        }
+
+        // Members first, then the rest: buffs of the group's duration before the others.
+        private void RebuildMembers(BubbleBuff keep) {
+            Bubble.RefreshGroup();
+            var state = State;
+            var duration = PadGroups.DurationOf(memberGroup);
+            var buffs = state?.BuffList == null
+                ? new List<BubbleBuff>()
+                : state.BuffList.Where(b => !b.HideBecause(HideReason.Blacklisted) && b.CasterQueue.Count > 0).ToList();
+            var members = buffs.Where(b => PadGroups.IsMember(b, memberGroup))
+                .OrderBy(b => b.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+            var others = buffs.Where(b => !PadGroups.IsMember(b, memberGroup))
+                .OrderByDescending(b => PadGroups.Fits(b, duration))
+                .ThenBy(b => b.Name, StringComparer.CurrentCultureIgnoreCase);
+            memberCount = members.Count;
+            memberList = members.Concat(others).ToList();
+            if (keep != null) {
+                int idx = memberList.IndexOf(keep);
+                memberCursor = idx >= 0 ? idx : Mathf.Min(memberCursor, memberList.Count - 1);
+            } else {
+                memberCursor = 0;
+                memberTop = 0;
+            }
+            memberCursor = Mathf.Max(0, memberCursor);
+            RenderMembers();
+        }
+
+        private void RenderMembers() {
+            var all = PadGroups.All();
+            int idx = all.IndexOf(memberGroup);
+            string prev = all.Count > 1 ? PadGroups.Name(all[(idx - 1 + all.Count) % all.Count]) : "";
+            string next = all.Count > 1 ? PadGroups.Name(all[(idx + 1) % all.Count]) : "";
+            membersTabText.text = $"<color=#8A847A>{Trim(prev, 22)}</color>    <color=#E8C46A><b>{PadGroups.Name(memberGroup)}</b></color>    <color=#8A847A>{Trim(next, 22)}</color>";
+
+            if (memberCursor < memberTop)
+                memberTop = memberCursor;
+            if (memberCursor >= memberTop + MemberRows)
+                memberTop = memberCursor - MemberRows + 1;
+            memberTop = Mathf.Clamp(memberTop, 0, Mathf.Max(0, memberList.Count - MemberRows));
+
+            for (int i = 0; i < memberRows.Count; i++) {
+                int at = memberTop + i;
+                var row = memberRows[i];
+                if (at >= memberList.Count) {
+                    row.Bg.color = Color.clear;
+                    row.Box.SetActive(false);
+                    row.Text.text = at == 0 ? $"<color=#8A847A>{"pad.editor.empty".i8()}</color>" : "";
+                    continue;
+                }
+                var buff = memberList[at];
+                bool member = at < memberCount;
+                row.Bg.color = at == memberCursor ? RowSelectedColor : member ? RowColor : RowOutsideColor;
+                row.Box.SetActive(member);
+                row.Tick.enabled = member && buff.ActiveIn(memberGroup);
+
+                var kind = PadGroups.KindOf(buff, out var targets);
+                string span = PadGroups.SpanName(PadGroups.Span(buff));
+                string kindText = kind switch {
+                    TargetKind.Self => "pad.kind.self".i8(),
+                    TargetKind.Party => "pad.kind.party".i8(),
+                    TargetKind.Song => "pad.kind.song".i8(),
+                    _ => $"<color=#E08A7A>{"pad.kind.none".i8()}</color>"
+                };
+                string name = member ? Trim(buff.Name, 42) : $"<color=#A8A296>{Trim(buff.Name, 42)}</color>";
+                string count = "";
+                if (member) {
+                    int wanted = Bubble.Group.Count(buff.UnitWants);
+                    int reach = Bubble.Group.Count(buff.CanTarget);
+                    count = $"<color=#9AD08A>{wanted}/{reach}</color>";
+                }
+                row.Text.text = $"{name}<pos=52%><color=#B8B0A0>{span}</color><pos=70%>{kindText}<pos=91%>{count}";
+            }
+
+            int on = memberList.Take(memberCount).Count(b => b.ActiveIn(memberGroup));
+            string position = memberList.Count > MemberRows ? $"  <color=#8A847A>{memberCursor + 1}/{memberList.Count}</color>" : "";
+            string where = SelectedMember == null ? ""
+                : memberCursor < memberCount ? "pad.members.inside".i8() : "pad.members.outside".i8();
+            membersDetail.text = string.Format("pad.members.detail".i8(), memberCount, on,
+                PadGroups.DurationName(PadGroups.DurationOf(memberGroup))) + (where.Length > 0 ? " · " + where : "") + position;
+        }
+
+        private void ToggleMembership() {
+            var buff = SelectedMember;
+            if (buff == null)
+                return;
+            if (PadGroups.IsMember(buff, memberGroup)) {
+                bool lastGroup = buff.InGroups.Count == 1;
+                PadGroups.Remove(buff, memberGroup);
+                membersNote.text = string.Format(lastGroup ? "pad.members.removed.last".i8() : "pad.members.removed".i8(), buff.Name);
+            } else if (PadGroups.Add(buff, memberGroup, on: true)) {
+                var kind = PadGroups.KindOf(buff, out _);
+                membersNote.text = string.Format("pad.members.added".i8(), buff.Name,
+                    kind == TargetKind.Self ? "pad.kind.self".i8() : kind == TargetKind.Song ? "pad.kind.song".i8() : "pad.kind.party".i8());
+            } else {
+                membersNote.text = string.Format("pad.members.notargets".i8(), buff.Name);
+                return;
+            }
+            Commit();
+            RebuildMembers(buff);
+        }
+
+        private void ToggleTick() {
+            var buff = SelectedMember;
+            if (buff == null || !PadGroups.IsMember(buff, memberGroup)) {
+                membersNote.text = "pad.members.tick.outside".i8();
+                return;
+            }
+            PadGroups.SetOn(buff, memberGroup, !buff.ActiveIn(memberGroup));
+            Commit();
+            RenderMembers();
+        }
+
+        private void AutoFill() {
+            int added = PadGroups.AutoFill(memberGroup);
+            if (added < 0) {
+                membersNote.text = "pad.members.fill.any".i8();
+                return;
+            }
+            membersNote.text = string.Format("pad.members.fill".i8(), added);
+            Commit();
+            RebuildMembers(SelectedMember);
+        }
+
+        // ---------- name page ----------
+
+        private static readonly string[] RowsRu = { "ЙЦУКЕНГШЩЗХЪ", "ФЫВАПРОЛДЖЭ", "ЯЧСМИТЬБЮЁ", "1234567890-+/." };
+        private static readonly string[] RowsEn = { "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM", "1234567890-+/." };
+        private const string KeySpace = "\u0001space";
+        private const string KeyShift = "\u0001shift";
+        private const string KeyLang = "\u0001lang";
+        private const string KeyErase = "\u0001erase";
+        private const string KeyDone = "\u0001done";
+
+        private void OpenName(BuffGroup? target) {
+            if (target == null && !PadGroups.CanCreate) {
+                groupsNote.text = "pad.groups.full".i8();
+                return;
+            }
+            nameTarget = target;
+            var duration = target == null ? GroupDuration.Any : PadGroups.DurationOf(target.Value);
+            nameDuration = Mathf.Max(0, Array.IndexOf(PadGroups.Presets, duration));
+            nameBuffer = "";
+            if (target != null) {
+                string current = PadGroups.Name(target.Value);
+                if (current != PadGroups.DurationName(duration))
+                    nameBuffer = current;
+            }
+            shift = false;
+            keyRow = 0;
+            keyCol = 0;
+            BuildKeys();
+            ShowPage(Page.Name);
+        }
+
+        private void BuildKeys() {
+            foreach (Transform child in keyHolder)
+                Destroy(child.gameObject);
+            keys.Clear();
+            var letters = latin ? RowsEn : RowsRu;
+            foreach (var line in letters) {
+                var rowGo = MakeHorizontal(keyHolder, "Keys", 6, TextAnchor.MiddleCenter);
+                var row = new List<(Image, TextMeshProUGUI, string)>();
+                foreach (char c in line)
+                    row.Add(MakeKey(rowGo.transform, c.ToString(), c.ToString(), 58));
+                keys.Add(row);
+            }
+            var special = MakeHorizontal(keyHolder, "Keys", 6, TextAnchor.MiddleCenter);
+            keys.Add(new List<(Image, TextMeshProUGUI, string)> {
+                MakeKey(special.transform, KeySpace, "pad.key.space".i8(), 200),
+                MakeKey(special.transform, KeyShift, "pad.key.shift".i8(), 110),
+                MakeKey(special.transform, KeyLang, latin ? "RU" : "EN", 90),
+                MakeKey(special.transform, KeyErase, "pad.key.erase".i8(), 150),
+                MakeKey(special.transform, KeyDone, "pad.key.done".i8(), 150),
+            });
+            keyRow = Mathf.Clamp(keyRow, 0, keys.Count - 1);
+            keyCol = Mathf.Clamp(keyCol, 0, keys[keyRow].Count - 1);
+        }
+
+        private (Image, TextMeshProUGUI, string) MakeKey(Transform parent, string key, string label, float width) {
+            var go = new GameObject("Key", typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            var bg = go.AddComponent<Image>();
+            bg.color = KeyColor;
+            var element = go.AddComponent<LayoutElement>();
+            element.preferredWidth = width;
+            element.preferredHeight = 50;
+            var layout = go.AddComponent<HorizontalLayoutGroup>();
+            layout.childAlignment = TextAnchor.MiddleCenter;
+            layout.childControlWidth = true;
+            layout.childControlHeight = true;
+            var text = MakeText(go.transform, font, label, 24, FontStyles.Normal, TextColor);
+            text.alignment = TextAlignmentOptions.Center;
+            text.enableWordWrapping = false;
+            return (bg, text, key);
+        }
+
+        private bool UpperNext => shift || nameBuffer.Length == 0;
+
+        private void RenderKeys() {
+            for (int r = 0; r < keys.Count; r++) {
+                for (int c = 0; c < keys[r].Count; c++) {
+                    var (bg, text, key) = keys[r][c];
+                    bg.color = r == keyRow && c == keyCol ? RowSelectedColor : KeyColor;
+                    if (key.Length == 1 && char.IsLetter(key[0]))
+                        text.text = UpperNext ? key : key.ToLowerInvariant();
+                    else if (key == KeyShift)
+                        text.text = shift ? $"<color=#E8C46A>{"pad.key.shift".i8()}</color>" : "pad.key.shift".i8();
+                }
+            }
+        }
+
+        private void RenderName() {
+            var duration = PadGroups.Presets[nameDuration];
+            string shown = nameBuffer.Length > 0
+                ? $"{nameBuffer}<color=#E8C46A>_</color>"
+                : $"<color=#E8C46A>_</color><color=#6A655C>{PadGroups.DurationName(duration)}</color>";
+            nameText.text = $"<size=80%><color=#B8B0A0>{"pad.name.label".i8()}</color></size>\n<size=130%>{shown}</size>";
+            nameDurationText.text = string.Format("pad.name.duration".i8(), PadGroups.DurationName(duration));
+            RenderKeys();
+        }
+
+        private void PressKey() {
+            var key = keys[keyRow][keyCol].key;
+            switch (key) {
+                case KeySpace: Type(' '); break;
+                case KeyShift: shift = !shift; RenderName(); break;
+                case KeyLang:
+                    latin = !latin;
+                    BuildKeys();
+                    RenderName();
+                    break;
+                case KeyErase: Backspace(); break;
+                case KeyDone: FinishName(); break;
+                default: Type(key[0]); break;
+            }
+        }
+
+        private void Type(char c) {
+            if (nameBuffer.Length >= PadGroups.NameLimit)
+                return;
+            if (c == ' ' && (nameBuffer.Length == 0 || nameBuffer.EndsWith(" ")))
+                return;
+            if (char.IsLetter(c))
+                c = UpperNext ? char.ToUpperInvariant(c) : char.ToLowerInvariant(c);
+            nameBuffer += c;
+            shift = false;
+            RenderName();
+        }
+
+        private void Backspace() {
+            if (nameBuffer.Length > 0)
+                nameBuffer = nameBuffer.Substring(0, nameBuffer.Length - 1);
+            RenderName();
+        }
+
+        // Keyboard text (Steam on-screen keyboard or a real one) is taken as typed.
+        private void PollTyping() {
+            foreach (char c in Input.inputString) {
+                if (c == '\b') {
+                    Backspace();
+                } else if (c == '\n' || c == '\r') {
+                    FinishName();
+                    return;
+                } else if (!char.IsControl(c) && nameBuffer.Length < PadGroups.NameLimit) {
+                    nameBuffer += c;
+                    RenderName();
+                }
+            }
+        }
+
+        private void CycleDuration(int delta) {
+            nameDuration = (nameDuration + delta + PadGroups.Presets.Length) % PadGroups.Presets.Length;
+            RenderName();
+        }
+
+        private void FinishName() {
+            var duration = PadGroups.Presets[nameDuration];
+            if (nameTarget == null) {
+                var created = PadGroups.Create(nameBuffer, duration);
+                if (created == null) {
+                    groupsNote.text = "pad.groups.full".i8();
+                    ShowPage(Page.Groups);
+                    return;
+                }
+                Main.Log($"[PAD] group created: {created} '{PadGroups.Name(created.Value)}' {duration}");
+                groupList = PadGroups.All();
+                groupsCursor = groupList.IndexOf(created.Value);
+                OpenMembers(created.Value, Page.Groups);
+                membersNote.text = duration == GroupDuration.Any ? "pad.members.new.any".i8() : "pad.members.new".i8();
+            } else {
+                PadGroups.Rename(nameTarget.Value, nameBuffer, duration);
+                ShowPage(Page.Groups);
+            }
         }
 
         // ---------- editor page ----------
 
+        private List<BuffGroup?> EditorTabs {
+            get {
+                var tabs = new List<BuffGroup?> { null, null };
+                tabs.AddRange(PadGroups.All().Select(g => (BuffGroup?)g));
+                return tabs;
+            }
+        }
+
+        private static string EditorTabName(List<BuffGroup?> tabs, int i) =>
+            i == 0 ? "pad.tab.assigned".i8() : i == 1 ? "pad.tab.all".i8() : PadGroups.Name(tabs[i].Value);
+
+        private void OpenEditor(Page back, BubbleBuff buff) {
+            editorBack = back;
+            if (buff != null)
+                tab = 1;
+            ShowPage(Page.Editor);
+            if (buff != null)
+                RebuildFilter(buff);
+        }
+
         private void SwitchTab(int delta) {
-            if (page != Page.Editor)
-                return;
-            tab = (tab + delta + Tabs.Length) % Tabs.Length;
+            int count = EditorTabs.Count;
+            tab = (tab + delta + count) % count;
             RebuildFilter(keepBuff: null);
         }
 
-        private bool PassesTab(BubbleBuff buff) {
+        private bool PassesTab(BubbleBuff buff, List<BuffGroup?> tabs) {
             if (buff.HideBecause(HideReason.Blacklisted))
                 return false;
-            return Tabs[tab] switch {
-                Tab.Assigned => buff.Requested > 0,
-                Tab.All => true,
-                Tab.Long => buff.Requested > 0 && buff.InGroups.Contains(BuffGroup.Long),
-                Tab.Quick => buff.Requested > 0 && buff.InGroups.Contains(BuffGroup.Quick),
-                Tab.Important => buff.Requested > 0 && buff.InGroups.Contains(BuffGroup.Important),
-                _ => true
-            };
+            if (tab == 0)
+                return buff.Requested > 0;
+            if (tab == 1)
+                return true;
+            return PadGroups.IsMember(buff, tabs[tab].Value);
         }
 
         private void RebuildFilter(BubbleBuff keepBuff) {
             var state = State;
+            var tabs = EditorTabs;
+            tab = Mathf.Clamp(tab, 0, tabs.Count - 1);
             filtered = state?.BuffList == null
                 ? new List<BubbleBuff>()
-                : state.BuffList.Where(PassesTab).OrderBy(b => b.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+                : state.BuffList.Where(b => PassesTab(b, tabs)).OrderBy(b => b.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
             if (keepBuff != null) {
                 int idx = filtered.IndexOf(keepBuff);
                 cursor = idx >= 0 ? idx : Mathf.Min(cursor, filtered.Count - 1);
@@ -644,7 +1241,13 @@ namespace BuffIt2TheLimit {
             var unit = party[partyCol];
             if (!buff.CanTarget(unit))
                 return;
-            buff.SetUnitWants(unit, !buff.UnitWants(unit));
+            bool removing = buff.UnitWants(unit);
+            buff.SetUnitWants(unit, !removing);
+            // Dropping the last target takes the buff out of every group.
+            if (removing && buff.Requested == 0) {
+                foreach (var g in buff.InGroups.ToList())
+                    PadGroups.Remove(buff, g);
+            }
             ApplyEdit(buff);
         }
 
@@ -658,46 +1261,24 @@ namespace BuffIt2TheLimit {
             bool allWanted = targetable.All(buff.UnitWants);
             foreach (var unit in targetable)
                 buff.SetUnitWants(unit, !allWanted);
+            if (allWanted && buff.Requested == 0) {
+                foreach (var g in buff.InGroups.ToList())
+                    PadGroups.Remove(buff, g);
+            }
             ApplyEdit(buff);
         }
 
-        // Long → Quick → Important → Long. A buff without targets is shown without a group,
-        // the group only matters once at least one target is set.
-        private void CycleGroup() {
+        private void AutoTargets() {
             var buff = SelectedBuff;
             if (buff == null)
                 return;
-            BuffGroup next = BuffGroup.Long;
-            if (buff.InGroups.Count == 1) {
-                next = buff.InGroups.First() switch {
-                    BuffGroup.Long => BuffGroup.Quick,
-                    BuffGroup.Quick => BuffGroup.Important,
-                    _ => BuffGroup.Long
-                };
-            }
-            buff.InGroups.Clear();
-            buff.InGroups.Add(next);
-            State?.Save();
-            RebuildFilter(keepBuff: buff);
+            PadGroups.AutoTarget(buff);
+            ApplyEdit(buff);
         }
 
         private void ApplyEdit(BubbleBuff buff) {
-            try {
-                State?.Recalculate(false);
-            } catch (Exception ex) {
-                Main.Error(ex, "PadQuickMenu.ApplyEdit");
-            }
+            Commit();
             RebuildFilter(keepBuff: buff);
-        }
-
-        private string GroupBadges(BubbleBuff buff) {
-            var parts = new List<string>();
-            foreach (var g in Groups) {
-                bool on = buff.Requested > 0 && buff.InGroups.Contains(g);
-                string letter = GroupLetter(g);
-                parts.Add(on ? $"<color=#E8C46A>{letter}</color>" : $"<color=#55504A>{letter}</color>");
-            }
-            return string.Join(" ", parts);
         }
 
         private void RenderEditor() {
@@ -705,8 +1286,10 @@ namespace BuffIt2TheLimit {
             if (partyCol >= party.Count)
                 partyCol = Mathf.Max(0, party.Count - 1);
 
-            var tabNames = Tabs.Select((t, i) => i == tab ? $"<color=#E8C46A><b>{TabName(t)}</b></color>" : $"<color=#8A847A>{TabName(t)}</color>");
-            tabText.text = string.Join("    ", tabNames);
+            var tabs = EditorTabs;
+            string prev = EditorTabName(tabs, (tab - 1 + tabs.Count) % tabs.Count);
+            string next = EditorTabName(tabs, (tab + 1) % tabs.Count);
+            tabText.text = $"<color=#8A847A>{Trim(prev, 22)}</color>    <color=#E8C46A><b>{EditorTabName(tabs, tab)}</b></color>    <color=#8A847A>{Trim(next, 22)}</color>";
 
             if (cursor < top)
                 top = cursor;
@@ -716,19 +1299,21 @@ namespace BuffIt2TheLimit {
 
             for (int i = 0; i < listRows.Count; i++) {
                 int idx = top + i;
-                var (bg, text) = listRows[i];
+                var row = listRows[i];
                 if (idx >= filtered.Count) {
-                    bg.color = Color.clear;
-                    text.text = idx == 0 ? $"<color=#8A847A>{"pad.editor.empty".i8()}</color>" : "";
+                    row.Bg.color = Color.clear;
+                    row.Text.text = idx == 0 ? $"<color=#8A847A>{"pad.editor.empty".i8()}</color>" : "";
                     continue;
                 }
                 var buff = filtered[idx];
-                bg.color = idx == cursor ? RowSelectedColor : RowColor;
+                row.Bg.color = idx == cursor ? RowSelectedColor : RowColor;
                 var targetable = party.Where(buff.CanTarget).ToList();
                 int wanted = targetable.Count(buff.UnitWants);
-                string rounds = buff.HideBecause(HideReason.Short) ? $" <color=#8A847A>{"pad.editor.rounds".i8()}</color>" : "";
+                string span = $"<color=#B8B0A0>{PadGroups.SpanName(PadGroups.Span(buff))}</color>";
                 string count = wanted > 0 ? $"<color=#9AD08A>{wanted}/{targetable.Count}</color>" : $"<color=#55504A>0/{targetable.Count}</color>";
-                text.text = $"{Trim(buff.Name, 46)}{rounds}<pos=78%>{GroupBadges(buff)}<pos=91%>{count}";
+                int groups = buff.Requested > 0 ? buff.InGroups.Count : 0;
+                string groupMark = groups > 0 ? $"<color=#E8C46A>{string.Format("pad.editor.groups".i8(), groups)}</color>" : "";
+                row.Text.text = $"{Trim(buff.Name, 46)}<pos=56%>{span}<pos=72%>{groupMark}<pos=91%>{count}";
             }
 
             string more = filtered.Count > VisibleRows ? $"  <color=#8A847A>{cursor + 1}/{filtered.Count}</color>" : "";
@@ -736,10 +1321,11 @@ namespace BuffIt2TheLimit {
             if (selectedBuff == null) {
                 detailText.text = more;
             } else {
-                var groups = selectedBuff.Requested > 0
-                    ? string.Join(", ", Groups.Where(selectedBuff.InGroups.Contains).Select(GroupName))
+                var names = selectedBuff.Requested > 0
+                    ? string.Join(", ", PadGroups.All().Where(g => PadGroups.IsMember(selectedBuff, g))
+                        .Select(g => selectedBuff.ActiveIn(g) ? PadGroups.Name(g) : $"{PadGroups.Name(g)} ({"pad.off".i8()})"))
                     : "pad.editor.nogroup".i8();
-                detailText.text = string.Format("pad.editor.detail".i8(), selectedBuff.Name, groups, selectedBuff.CasterQueue.Count) + more;
+                detailText.text = string.Format("pad.editor.detail".i8(), selectedBuff.Name, names, selectedBuff.CasterQueue.Count) + more;
             }
 
             EnsureChips(party.Count);
@@ -790,7 +1376,8 @@ namespace BuffIt2TheLimit {
 
         private List<string> BuildHelp() {
             var lines = new List<string>();
-            foreach (var line in "pad.help.body".i8().Split('\n'))
+            var body = string.Format("pad.help.body".i8(), PadGroups.Name(BuffGroup.Long), PadGroups.Name(BuffGroup.Important));
+            foreach (var line in body.Split('\n'))
                 lines.Add(line.StartsWith("#") ? $"<color=#E8C46A><b>{line.TrimStart('#', ' ')}</b></color>" : line);
             lines.Add("");
             lines.Add($"<color=#E8C46A><b>{"pad.help.example.title".i8()}</b></color>");
@@ -815,34 +1402,39 @@ namespace BuffIt2TheLimit {
             var buffs = state.BuffList.Where(b => !b.HideBecause(HideReason.Blacklisted) && b.CasterQueue.Count > 0).ToList();
             string Names(IEnumerable<UnitEntityData> units) => string.Join(", ", units.Select(u => u.CharacterName));
 
-            var multi = buffs
-                .Where(b => b.Requested > 0 && b.InGroups.Contains(BuffGroup.Long) && party.Count(b.CanTarget) > 1)
-                .FirstOrDefault(b => party.Any(u => b.CanTarget(u) && !b.UnitWants(u)))
-                ?? buffs.FirstOrDefault(b => b.Requested > 0 && party.Count(b.CanTarget) > 1);
-            if (multi != null) {
-                var caster = multi.CasterQueue[0].who;
-                var wanted = party.Where(multi.UnitWants).ToList();
-                var missing = party.FirstOrDefault(u => multi.CanTarget(u) && !multi.UnitWants(u));
-                var groupName = string.Join(", ", Groups.Where(multi.InGroups.Contains).Select(GroupName));
-                lines.Add(string.Format("pad.help.example.1".i8(), multi.Name, caster?.CharacterName ?? "?", wanted.Count > 0 ? Names(wanted) : "—", groupName));
-                if (missing != null)
-                    lines.Add(string.Format("pad.help.example.1add".i8(), missing.CharacterName, multi.Name));
-                else
-                    lines.Add(string.Format("pad.help.example.1remove".i8(), wanted.LastOrDefault()?.CharacterName ?? "?", multi.Name));
+            var partyBuff = buffs.FirstOrDefault(b => PadGroups.KindOf(b, out var t) == TargetKind.Party && t.Count > 1
+                                                      && PadGroups.Fits(b, GroupDuration.TenMinutesPlus));
+            if (partyBuff != null) {
+                PadGroups.KindOf(partyBuff, out var targets);
+                var caster = partyBuff.CasterQueue[0].who;
+                lines.Add(string.Format("pad.help.example.party".i8(), partyBuff.Name, caster?.CharacterName ?? "?",
+                    Names(targets), PadGroups.Name(BuffGroup.Long)));
             }
 
-            var rounds = buffs.FirstOrDefault(b => b.HideBecause(HideReason.Short) && b.Requested > 0)
-                ?? buffs.FirstOrDefault(b => b.HideBecause(HideReason.Short));
+            var selfBuff = buffs.FirstOrDefault(b => PadGroups.KindOf(b, out _) == TargetKind.Self);
+            if (selfBuff != null) {
+                PadGroups.KindOf(selfBuff, out var targets);
+                lines.Add(string.Format("pad.help.example.self".i8(), selfBuff.Name, Names(targets)));
+            }
+
+            var rounds = buffs.FirstOrDefault(b => PadGroups.Span(b) == BuffDuration.Rounds && PadGroups.KindOf(b, out _) != TargetKind.None);
             if (rounds != null) {
-                bool inImportant = rounds.Requested > 0 && rounds.InGroups.Contains(BuffGroup.Important);
-                lines.Add(string.Format(inImportant ? "pad.help.example.2ok".i8() : "pad.help.example.2move".i8(), rounds.Name));
+                bool inRounds = rounds.ActiveIn(BuffGroup.Important);
+                lines.Add(string.Format(inRounds ? "pad.help.example.rounds.ok".i8() : "pad.help.example.rounds".i8(),
+                    rounds.Name, PadGroups.Name(BuffGroup.Important)));
             }
 
-            var self = buffs.FirstOrDefault(b => party.Count(b.CanTarget) == 1);
-            if (self != null) {
-                var only = party.First(self.CanTarget);
-                lines.Add(string.Format("pad.help.example.3".i8(), self.Name, only.CharacterName));
+            var custom = PadGroups.All().FirstOrDefault(PadGroups.IsCustom);
+            if (custom != default(BuffGroup) && PadGroups.IsCustom(custom)) {
+                int count = buffs.Count(b => PadGroups.IsMember(b, custom));
+                lines.Add(string.Format("pad.help.example.custom".i8(), PadGroups.Name(custom), count));
+            } else {
+                lines.Add("pad.help.example.newgroup".i8());
             }
+
+            var tickable = buffs.FirstOrDefault(b => b.InGroups.Count > 0 && b.Requested > 0 && b.ActiveIn(b.InGroups.First()));
+            if (tickable != null)
+                lines.Add(string.Format("pad.help.example.tick".i8(), tickable.Name, PadGroups.Name(tickable.InGroups.First())));
 
             if (lines.Count == 0)
                 lines.Add("pad.help.example.none".i8());
@@ -854,33 +1446,21 @@ namespace BuffIt2TheLimit {
         private static string Trim(string s, int max) =>
             string.IsNullOrEmpty(s) || s.Length <= max ? s ?? "" : s.Substring(0, max - 1) + "…";
 
-        internal static string GroupName(BuffGroup group) => group switch {
-            BuffGroup.Long => "group.normal".i8(),
-            BuffGroup.Quick => "group.short".i8(),
-            BuffGroup.Important => "group.important".i8(),
-            _ => group.ToString()
-        };
-
-        private static string GroupLetter(BuffGroup group) => group switch {
-            BuffGroup.Long => "pad.letter.long".i8(),
-            BuffGroup.Quick => "pad.letter.quick".i8(),
-            BuffGroup.Important => "pad.letter.important".i8(),
-            _ => "?"
-        };
-
-        private static string TabName(Tab t) => t switch {
-            Tab.Assigned => "pad.tab.assigned".i8(),
-            Tab.All => "pad.tab.all".i8(),
-            Tab.Long => GroupName(BuffGroup.Long),
-            Tab.Quick => GroupName(BuffGroup.Quick),
-            Tab.Important => GroupName(BuffGroup.Important),
-            _ => t.ToString()
-        };
+        internal static string GroupName(BuffGroup group) => PadGroups.Name(group);
 
         private static string FormatTime(TimeSpan t) =>
             t.TotalHours >= 1
                 ? $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}"
                 : $"{t.Minutes}:{t.Seconds:00}";
+
+        private void EnsureRows(List<ListRow> list, Transform holder, int count, float size, bool withBox) {
+            while (list.Count < count)
+                list.Add(MakeListRow(holder, font, size, withBox));
+            while (list.Count > count) {
+                Destroy(list[list.Count - 1].Bg.gameObject);
+                list.RemoveAt(list.Count - 1);
+            }
+        }
 
         // ---------- construction ----------
 
@@ -919,30 +1499,80 @@ namespace BuffIt2TheLimit {
             menu.font = font;
             menu.titleText = MakeText(root.transform, font, "pad.title".i8(), 30, FontStyles.Bold, TitleColor);
 
+            // main
             menu.mainRoot = MakeContainer(root.transform, "Main", 10);
-            for (int r = 0; r < menu.MainRowCount; r++)
-                menu.rows.Add(MakeRow(menu.mainRoot.transform, font, 24));
+            menu.mainRowHolder = MakeContainer(menu.mainRoot.transform, "Rows", 6).transform;
             menu.reportText = MakeText(menu.mainRoot.transform, font, "", 20, FontStyles.Normal, TextColor);
             menu.reportText.gameObject.SetActive(false);
             MakeHintBar(menu.mainRoot.transform, font,
                 (new[] { RewiredActionType.DPadVertical }, "pad.h.select"),
                 (new[] { RewiredActionType.Confirm }, "pad.h.apply"),
                 (new[] { RewiredActionType.Func01 }, "pad.h.all"),
-                (new[] { RewiredActionType.Func02 }, "pad.h.setup"),
+                (new[] { RewiredActionType.Func02 }, "pad.h.members"),
                 (new[] { RewiredActionType.Decline }, "pad.h.close"));
 
+            // groups
+            menu.groupsRoot = MakeContainer(root.transform, "Groups", 8);
+            menu.groupsRowHolder = MakeContainer(menu.groupsRoot.transform, "Rows", 5).transform;
+            menu.groupsNote = MakeText(menu.groupsRoot.transform, font, "", 19, FontStyles.Normal, TitleColor);
+            MakeHintBar(menu.groupsRoot.transform, font,
+                (new[] { RewiredActionType.DPadVertical }, "pad.h.select"),
+                (new[] { RewiredActionType.Confirm }, "pad.h.open"),
+                (new[] { RewiredActionType.Func02 }, "pad.h.rename"),
+                (new[] { RewiredActionType.Func01 }, "pad.h.hide"),
+                (new[] { RewiredActionType.RightUp }, "pad.h.delete"),
+                (new[] { RewiredActionType.Decline }, "pad.h.back"));
+            menu.groupsRoot.SetActive(false);
+
+            // members
+            menu.membersRoot = MakeContainer(root.transform, "Members", 5);
+            var memberTabs = MakeHorizontal(menu.membersRoot.transform, "Tabs", 14, TextAnchor.MiddleLeft);
+            MakeIcon(memberTabs.transform, font, RewiredActionType.LeftUp, 32);
+            menu.membersTabText = MakeText(memberTabs.transform, font, "", 21, FontStyles.Normal, TextColor);
+            menu.membersTabText.enableWordWrapping = false;
+            MakeIcon(memberTabs.transform, font, RewiredActionType.RightUp, 32);
+            for (int r = 0; r < MemberRows; r++)
+                menu.memberRows.Add(MakeListRow(menu.membersRoot.transform, font, 20, withBox: true));
+            menu.membersDetail = MakeText(menu.membersRoot.transform, font, "", 19, FontStyles.Normal, DimColor);
+            menu.membersNote = MakeText(menu.membersRoot.transform, font, "", 19, FontStyles.Normal, TitleColor);
+            MakeHintBar(menu.membersRoot.transform, font,
+                (new[] { RewiredActionType.DPadVertical }, "pad.h.buff"),
+                (new[] { RewiredActionType.Confirm }, "pad.h.addremove"),
+                (new[] { RewiredActionType.Func01 }, "pad.h.tick"),
+                (new[] { RewiredActionType.Func02 }, "pad.h.fill"),
+                (new[] { RewiredActionType.DPadRight }, "pad.h.targets"),
+                (new[] { RewiredActionType.LeftUp, RewiredActionType.RightUp }, "pad.h.group"),
+                (new[] { RewiredActionType.Decline }, "pad.h.back"));
+            menu.membersRoot.SetActive(false);
+
+            // name
+            menu.nameRoot = MakeContainer(root.transform, "Name", 10);
+            menu.nameText = MakeText(menu.nameRoot.transform, font, "", 24, FontStyles.Normal, TextColor);
+            var durationRow = MakeHorizontal(menu.nameRoot.transform, "Duration", 14, TextAnchor.MiddleLeft);
+            MakeIcon(durationRow.transform, font, RewiredActionType.LeftUp, 32);
+            menu.nameDurationText = MakeText(durationRow.transform, font, "", 21, FontStyles.Normal, TextColor);
+            menu.nameDurationText.enableWordWrapping = false;
+            MakeIcon(durationRow.transform, font, RewiredActionType.RightUp, 32);
+            menu.keyHolder = MakeContainer(menu.nameRoot.transform, "Keyboard", 6).transform;
+            MakeText(menu.nameRoot.transform, font, "pad.name.note".i8(), 18, FontStyles.Normal, DimColor);
+            MakeHintBar(menu.nameRoot.transform, font,
+                (new[] { RewiredActionType.DPadVertical, RewiredActionType.DPadHorizontal }, "pad.h.key"),
+                (new[] { RewiredActionType.Confirm }, "pad.h.type"),
+                (new[] { RewiredActionType.Func01 }, "pad.h.erase"),
+                (new[] { RewiredActionType.Func02 }, "pad.h.done"),
+                (new[] { RewiredActionType.LeftUp, RewiredActionType.RightUp }, "pad.h.duration"),
+                (new[] { RewiredActionType.Decline }, "pad.h.cancel"));
+            menu.nameRoot.SetActive(false);
+
+            // editor
             menu.editorRoot = MakeContainer(root.transform, "Editor", 6);
             var tabRow = MakeHorizontal(menu.editorRoot.transform, "Tabs", 14, TextAnchor.MiddleLeft);
             MakeIcon(tabRow.transform, font, RewiredActionType.LeftUp, 32);
             menu.tabText = MakeText(tabRow.transform, font, "", 21, FontStyles.Normal, TextColor);
             menu.tabText.enableWordWrapping = false;
             MakeIcon(tabRow.transform, font, RewiredActionType.RightUp, 32);
-            for (int r = 0; r < VisibleRows; r++) {
-                var row = MakeRow(menu.editorRoot.transform, font, 21);
-                row.text.enableWordWrapping = false;
-                row.text.overflowMode = TextOverflowModes.Ellipsis;
-                menu.listRows.Add(row);
-            }
+            for (int r = 0; r < VisibleRows; r++)
+                menu.listRows.Add(MakeListRow(menu.editorRoot.transform, font, 21, withBox: false));
             menu.detailText = MakeText(menu.editorRoot.transform, font, "", 19, FontStyles.Normal, DimColor);
             var chipHolder = new GameObject("Party", typeof(RectTransform));
             chipHolder.transform.SetParent(menu.editorRoot.transform, false);
@@ -958,13 +1588,14 @@ namespace BuffIt2TheLimit {
                 (new[] { RewiredActionType.DPadHorizontal }, "pad.h.char"),
                 (new[] { RewiredActionType.Confirm }, "pad.h.target"),
                 (new[] { RewiredActionType.Func02 }, "pad.h.party"),
-                (new[] { RewiredActionType.Func01 }, "pad.h.group"),
+                (new[] { RewiredActionType.Func01 }, "pad.h.auto"),
                 (new[] { RewiredActionType.LeftUp, RewiredActionType.RightUp }, "pad.h.tab"),
                 (new[] { RewiredActionType.Decline }, "pad.h.back"));
             menu.editorRoot.SetActive(false);
 
+            // help
             menu.helpRoot = MakeContainer(root.transform, "Help", 8);
-            menu.helpText = MakeText(menu.helpRoot.transform, font, "", 20, FontStyles.Normal, TextColor);
+            menu.helpText = MakeText(menu.helpRoot.transform, font, "", 19, FontStyles.Normal, TextColor);
             MakeHintBar(menu.helpRoot.transform, font,
                 (new[] { RewiredActionType.DPadVertical }, "pad.h.scroll"),
                 (new[] { RewiredActionType.Decline }, "pad.h.back"));
@@ -980,7 +1611,7 @@ namespace BuffIt2TheLimit {
             separator.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.12f);
             separator.AddComponent<LayoutElement>().preferredHeight = 1;
 
-            var bar = MakeHorizontal(parent, "Hints", 26, TextAnchor.MiddleCenter);
+            var bar = MakeHorizontal(parent, "Hints", 24, TextAnchor.MiddleCenter);
             foreach (var (buttons, labelKey) in items) {
                 var item = MakeHorizontal(bar.transform, "Hint", 6, TextAnchor.MiddleLeft);
                 foreach (var button in buttons)
@@ -1033,6 +1664,7 @@ namespace BuffIt2TheLimit {
             RewiredActionType.RightUp => "RB",
             RewiredActionType.DPadVertical => "D-pad",
             RewiredActionType.DPadHorizontal => "D-pad",
+            RewiredActionType.DPadRight => "D-pad",
             _ => button.ToString()
         };
 
@@ -1052,14 +1684,58 @@ namespace BuffIt2TheLimit {
             return go;
         }
 
-        private static (Image bg, TextMeshProUGUI text) MakeRow(Transform parent, TMP_FontAsset font, float size) {
-            var row = new GameObject("Row", typeof(RectTransform));
-            row.transform.SetParent(parent, false);
-            var bg = row.AddComponent<Image>();
+        // A row: background, optional tick box (outline, dark inside, green tick), one line of text.
+        private static ListRow MakeListRow(Transform parent, TMP_FontAsset font, float size, bool withBox) {
+            var go = new GameObject("Row", typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            var bg = go.AddComponent<Image>();
             bg.color = RowColor;
-            ConfigureVertical(row.AddComponent<VerticalLayoutGroup>(), new RectOffset(16, 16, 6, 6), 0);
-            var text = MakeText(row.transform, font, "", size, FontStyles.Normal, TextColor);
-            return (bg, text);
+            var layout = go.AddComponent<HorizontalLayoutGroup>();
+            layout.padding = new RectOffset(14, 14, 6, 6);
+            layout.spacing = 12;
+            layout.childAlignment = TextAnchor.MiddleLeft;
+            layout.childControlWidth = true;
+            layout.childControlHeight = true;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+
+            var row = new ListRow { Bg = bg };
+            if (withBox) {
+                var holder = new GameObject("BoxSlot", typeof(RectTransform));
+                holder.transform.SetParent(go.transform, false);
+                var slot = holder.AddComponent<LayoutElement>();
+                slot.preferredWidth = 24;
+                slot.preferredHeight = 24;
+
+                var box = new GameObject("Box", typeof(RectTransform));
+                box.transform.SetParent(holder.transform, false);
+                Stretch((RectTransform)box.transform, 0);
+                box.AddComponent<Image>().color = BoxColor;
+                var inner = new GameObject("Inner", typeof(RectTransform));
+                inner.transform.SetParent(box.transform, false);
+                Stretch((RectTransform)inner.transform, 2);
+                inner.AddComponent<Image>().color = BoxInnerColor;
+                var tick = new GameObject("Tick", typeof(RectTransform));
+                tick.transform.SetParent(box.transform, false);
+                Stretch((RectTransform)tick.transform, 5);
+                row.Tick = tick.AddComponent<Image>();
+                row.Tick.color = TickColor;
+                row.Box = box;
+            }
+
+            row.Text = MakeText(go.transform, font, "", size, FontStyles.Normal, TextColor);
+            row.Text.enableWordWrapping = false;
+            row.Text.overflowMode = TextOverflowModes.Ellipsis;
+            var textElement = row.Text.gameObject.AddComponent<LayoutElement>();
+            textElement.flexibleWidth = 1;
+            return row;
+        }
+
+        private static void Stretch(RectTransform rect, float inset) {
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = new Vector2(inset, inset);
+            rect.offsetMax = new Vector2(-inset, -inset);
         }
 
         private static TextMeshProUGUI MakeText(Transform parent, TMP_FontAsset font, string value, float size, FontStyles style, Color color) {

@@ -82,7 +82,24 @@ namespace BuffIt2TheLimit {
         [JsonProperty]
         public ShortcutBinding OpenBuffMenuKey;
         [JsonProperty]
+        // Names, durations and visibility of groups edited in the gamepad menu;
+        // built-in groups appear here only once renamed or hidden.
+        public List<SavedGroup> Groups = new();
+        [JsonProperty]
         public int Version;
+    }
+
+    public class SavedGroup {
+        [JsonProperty]
+        [JsonConverter(typeof(StringEnumConverter))]
+        public BuffGroup Id;
+        [JsonProperty]
+        public string Name;
+        [JsonProperty]
+        [JsonConverter(typeof(StringEnumConverter))]
+        public GroupDuration Duration;
+        [JsonProperty]
+        public bool Hidden;
     }
 
     public class SavedCasterState {
@@ -114,6 +131,9 @@ namespace BuffIt2TheLimit {
         public HashSet<BuffGroup> InGroups;
         [JsonProperty]
         public bool Blacklisted;
+        [JsonProperty(ItemConverterType = typeof(StringEnumConverter))]
+        // Groups the buff belongs to but is switched off in (kept with its targets).
+        public HashSet<BuffGroup> DisabledIn;
 
         [JsonProperty]
         public string[] IgnoreForOverwriteCheck;

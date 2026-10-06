@@ -1,0 +1,9 @@
+{
+  "Id": "PadBuffsKingmaker",
+  "DisplayName": "Buff It 2 The Limit (Pad) for Kingmaker",
+  "Author": "Vek17, factubsio, Gh05d; Kingmaker pad port",
+  "Version": "0.1.0",
+  "ManagerVersion": "0.22.0",
+  "Requirements": [],
+  "EntryMethod": "BuffIt2TheLimit.Main.Load"
+}

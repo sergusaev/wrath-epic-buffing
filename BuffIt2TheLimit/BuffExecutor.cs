@@ -8,8 +8,10 @@ using Kingmaker.EntitySystem;
 using Kingmaker.EntitySystem.Entities;
 using Kingmaker.RuleSystem;
 using Kingmaker.RuleSystem.Rules.Abilities;
+#if !KINGMAKER
 using Kingmaker.UI.Models.Log.CombatLog_ThreadSystem;
 using Kingmaker.UI.Models.Log.CombatLog_ThreadSystem.LogThreads.Common;
+#endif
 using Kingmaker.UnitLogic;
 using Kingmaker.UnitLogic.Abilities;
 using Kingmaker.UnitLogic.ActivatableAbilities;
@@ -68,6 +70,7 @@ namespace BuffIt2TheLimit {
             // Round limit deactivation check
             GlobalBubbleBuffer.RoundLimitWatcher?.Tick();
 
+#if !KINGMAKER
             // Handle pending open-buff-mode from the quick open button.
             // Two-phase approach: Phase 0 waits for spellbook ready, Phase 1 monitors PartyView.
             // The game's spellbook animation can re-show PartyView after our HideAnimation call,
@@ -108,6 +111,7 @@ namespace BuffIt2TheLimit {
                 }
             }
 
+#endif
             // Handle keyboard shortcut capture
             if (CapturingActive) {
                 foreach (KeyCode kc in BindableKeys) {
@@ -143,10 +147,15 @@ namespace BuffIt2TheLimit {
                             }
                         }
                     }
+#if KINGMAKER
+                    // No PC buff window in Kingmaker: the gestures drive the pad menu in both modes.
+                    PadGestures.Tick(state.GetOpenBuffMenuShortcut());
+#else
                     if (Game.Instance.IsControllerGamepad)
                         PadGestures.Tick(state.GetOpenBuffMenuShortcut());
                     else if (state.GetOpenBuffMenuShortcut().IsPressed())
                         instance?.OpenBuffMenu();
+#endif
                 }
             }
         }
@@ -174,10 +183,14 @@ namespace BuffIt2TheLimit {
             StartCoroutine(BuffExecutor.WithDeferredLog(castingCoroutine, tasks, title, attempted, skipped, tooltip));
         }
 
+#if KINGMAKER
+        public static IBuffExecutionEngine Engine => new KmExecutionEngine();
+#else
         public static IBuffExecutionEngine Engine =>
             GlobalBubbleBuffer.Instance.SpellbookController.state.VerboseCasting 
                 ? new AnimatedExecutionEngine() 
                 : new InstantExecutionEngine();
+#endif
     }
     public class BuffExecutor {
         public BufferState State;
@@ -233,6 +246,7 @@ namespace BuffIt2TheLimit {
             var messageString = $"{title} {"log.applied".i8()} {applied}/{attempted} ({"log.skipped".i8()} {skipped})";
             Main.Verbose(messageString);
 
+#if !KINGMAKER
             try {
                 var message = new CombatLogMessage(messageString, Color.blue, PrefixIcon.RightArrow, tooltip, true);
                 var messageLog = LogThreadService.Instance.m_Logs[LogChannelType.Common].First(x => x is MessageLogThread);
@@ -240,12 +254,14 @@ namespace BuffIt2TheLimit {
             } catch (Exception ex) {
                 Main.Error(ex, "Emitting combat log message");
             }
+#endif
         }
 
         public BuffExecutor(BufferState state) {
             State = state;
         }
 
+#if !KINGMAKER
         // The per-weapon Shifter's Fury toggles a unit currently has, in the engine's own order
         // (primary hand, secondary hand, then limbs). ShiftersFuryPart destroys and rebuilds this
         // list on every equipment or polymorph change, so never cache the result.
@@ -377,6 +393,20 @@ namespace BuffIt2TheLimit {
             return candidate.IsOn;
         }
 
+#else
+        // Kingmaker has no Shifter's Fury: every activatable is switched on directly.
+        internal static ActivatableAbility ResolveActivationTarget(UnitEntityData caster, ActivatableAbility candidate) => candidate;
+
+        internal static void ClearConflictingFuryWeapons(UnitEntityData caster, ActivatableAbility target) { }
+
+        internal static IEnumerable<ActivatableAbility> ResolveDeactivationTargets(UnitEntityData caster, ActivatableAbility candidate) {
+            if (candidate != null && candidate.IsOn)
+                yield return candidate;
+        }
+
+        internal static bool IsEffectivelyOn(UnitEntityData caster, ActivatableAbility candidate) => candidate.IsOn;
+
+#endif
         internal enum MountResult { NotTargeted, Mounted, NoCandidate, Ambiguous }
 
         // Targeted activatables (the stock Mount toggle is the only vanilla case) cannot be
@@ -393,6 +423,7 @@ namespace BuffIt2TheLimit {
         // an animal companion) resolve through the rider's saved mount preference
         // (caster-popout picker); without one the pass skips and the player saddles
         // manually.
+#if !KINGMAKER
         internal static List<UnitEntityData> GetMountCandidates(UnitEntityData rider) {
             return Bubble.Group
                 .Where(u => AbilityTargetIsSuitableMount.CanMount(rider, u)
@@ -430,6 +461,31 @@ namespace BuffIt2TheLimit {
             rider.Ensure<UnitPartRider>().Mount(mount);
             return MountResult.Mounted;
         }
+#else
+        // No mounts in Kingmaker.
+        internal static MountResult TryMountTargeted(UnitEntityData rider, ActivatableAbility activatable, out UnitEntityData mount) {
+            mount = null;
+            return MountResult.NotTargeted;
+        }
+#endif
+
+        // Form changes before the toggles that depend on them; see Phase 0 in Execute.
+        private static int ActivationOrder(ActivatableAbility source) {
+#if KINGMAKER
+            return 0;
+#else
+            return source?.ConversionsProvider is ShiftersFury ? 2
+                : source?.ConversionsProvider != null ? 1 : 0;
+#endif
+        }
+
+        private static bool IsRunning(ActivatableAbility activatable) {
+#if KINGMAKER
+            return activatable.IsRunning;
+#else
+            return activatable.IsStarted;
+#endif
+        }
 
         private Dictionary<BuffGroup, float> lastExecutedForGroup = new() {
             { BuffGroup.Long, -1 },
@@ -458,7 +514,7 @@ namespace BuffIt2TheLimit {
             if (Game.Instance.Player.IsInCombat && !State.AllowInCombat)
                 return;
 
-            var lastExecuted = lastExecutedForGroup[buffGroup];
+            lastExecutedForGroup.TryGetValue(buffGroup, out var lastExecuted);
             if (lastExecuted > 0 && (Time.realtimeSinceStartup - lastExecuted) < .5f) {
                 return;
             }
@@ -476,10 +532,9 @@ namespace BuffIt2TheLimit {
             //   1: Pattern-B parents with sub-selections (Chimeric Aspect — activates the form)
             //   2: Shifter's Fury (needs AppliedFacts from the form to exist first)
             foreach (var actBuff in State.BuffList
-                .Where(b => b.IsActivatable && b.InGroups.Contains(buffGroup) && b.Fulfilled > 0)
+                .Where(b => b.IsActivatable && b.ActiveIn(buffGroup) && b.Fulfilled > 0)
                 .Reverse()
-                .OrderBy(b => b.ActivatableSource?.ConversionsProvider is ShiftersFury ? 2
-                           : b.ActivatableSource?.ConversionsProvider != null ? 1 : 0)) {
+                .OrderBy(b => ActivationOrder(b.ActivatableSource))) {
                 if (actBuff.ActualCastQueue == null) continue;
                 foreach (var (_, provider) in actBuff.ActualCastQueue) {
                     try {
@@ -504,7 +559,7 @@ namespace BuffIt2TheLimit {
                         // against UnitPartActivatableAbility.GetGroupSize. Group.None has no cap.
                         if (group != ActivatableAbilityGroup.None) {
                             int cap = caster.Get<UnitPartActivatableAbility>()?.GetGroupSize(group) ?? 1;
-                            int activeInGroup = caster.ActivatableAbilities.RawFacts
+                            int activeInGroup = caster.ActivatableAbilities.RawFacts.OfType<ActivatableAbility>()
                                 .Count(a => a.Blueprint.Group == group && IsEffectivelyOn(caster, a));
                             if (activeInGroup >= cap) {
                                 Main.Log($"Activatable {actBuff.Name}: skipped — {group} cap reached for {caster.CharacterName} ({activeInGroup}/{cap})");
@@ -529,7 +584,7 @@ namespace BuffIt2TheLimit {
                                 case MountResult.Mounted:
                                     Main.Verbose($"Activatable {actBuff.Name}: mounted {caster.CharacterName} on {mount.CharacterName}");
                                     if (actBuff.DeactivateAfterRounds > 0)
-                                        GlobalBubbleBuffer.RoundLimitWatcher?.TrackActivation(caster, activatable.Blueprint.AssetGuid);
+                                        GlobalBubbleBuffer.RoundLimitWatcher?.TrackActivation(caster, activatable.Blueprint.Gid());
                                     break;
                                 case MountResult.NoCandidate:
                                     Main.Log($"Activatable {actBuff.Name}: no suitable mount for {caster.CharacterName} (needs their own conscious pet of larger size in the party)");
@@ -544,10 +599,10 @@ namespace BuffIt2TheLimit {
                         Main.Verbose($"Activating: {actBuff.Name} on {caster.CharacterName}");
                         ClearConflictingFuryWeapons(caster, target);
                         target.IsOn = true;
-                        if (!target.IsStarted)
+                        if (!IsRunning(target))
                             target.TryStart();
                         if (actBuff.DeactivateAfterRounds > 0)
-                            GlobalBubbleBuffer.RoundLimitWatcher?.TrackActivation(caster, activatable.Blueprint.AssetGuid);
+                            GlobalBubbleBuffer.RoundLimitWatcher?.TrackActivation(caster, activatable.Blueprint.Gid());
                     } catch (Exception ex) {
                         Main.Error(ex, $"activating {actBuff.Name}");
                     }
@@ -572,7 +627,7 @@ namespace BuffIt2TheLimit {
 
             // Requested (not Fulfilled) — buffs whose wanted targets all lost their caster
             // (spell slots spent, no scroll/potion fallback) still need a log entry below.
-            foreach (var buff in State.BuffList.Where(b => b.InGroups.Contains(buffGroup) && b.Requested > 0)) {
+            foreach (var buff in State.BuffList.Where(b => b.ActiveIn(buffGroup))) {
 
                 try {
                     if (buff.IsActivatable) continue; // Activatables handled in Phase 0
@@ -638,8 +693,13 @@ namespace BuffIt2TheLimit {
                         }
 
                         // Azata Zippy Magic
+#if KINGMAKER
+                        var priorSpellTasks = new List<CastTask>();
+#else
                         var priorSpellTasks = tasks.Where(x => x.Caster == caster.who && x.SlottedSpell.UniqueId == caster.SlottedSpell.UniqueId).ToList();
+#endif
                         
+#if !KINGMAKER
                         // Check to see if this spell does count for casting
                         if (!caster.AzataZippyMagic || (caster.AzataZippyMagic && priorSpellTasks.Count() % 2 == 0)) {
                             int neededArcanistPool = 0;
@@ -676,6 +736,7 @@ namespace BuffIt2TheLimit {
                                 }
                             }
                         }
+#endif
 
                         // This is a free cast
                         var IsDuplicateSpellApplied = false;
@@ -877,7 +938,7 @@ namespace BuffIt2TheLimit {
                 foreach (var provider in actBuff.AlreadyOnQueue) {
                     var activatable = provider.ActivatableSource ?? actBuff.ActivatableSource;
                     if (activatable == null || provider.who == null) continue;
-                    if (GlobalBubbleBuffer.RoundLimitWatcher?.TrackIfUntracked(provider.who, activatable.Blueprint.AssetGuid) == true)
+                    if (GlobalBubbleBuffer.RoundLimitWatcher?.TrackIfUntracked(provider.who, activatable.Blueprint.Gid()) == true)
                         Main.Log($"[CSD] Phase0 '{actBuff.Name}' already on for {provider.who.CharacterName} — round limit ({actBuff.DeactivateAfterRounds}) starts now");
                 }
             }
@@ -887,8 +948,7 @@ namespace BuffIt2TheLimit {
             foreach (var actBuff in combatStartBuffs
                 .Where(b => b.IsActivatable && b.Fulfilled > 0)
                 .Reverse()
-                .OrderBy(b => b.ActivatableSource?.ConversionsProvider is ShiftersFury ? 2
-                           : b.ActivatableSource?.ConversionsProvider != null ? 1 : 0)) {
+                .OrderBy(b => ActivationOrder(b.ActivatableSource))) {
                 if (actBuff.ActualCastQueue == null || actBuff.ActualCastQueue.Count == 0) {
                     Main.Log($"[CSD] Phase0 skip '{actBuff.Name}' (no eligible caster)");
                     continue;
@@ -922,7 +982,7 @@ namespace BuffIt2TheLimit {
                         // already reflects abilities activated earlier in this pass. Group.None = no cap.
                         if (group != ActivatableAbilityGroup.None) {
                             int cap = caster.Get<UnitPartActivatableAbility>()?.GetGroupSize(group) ?? 1;
-                            int activeInGroup = caster.ActivatableAbilities.RawFacts
+                            int activeInGroup = caster.ActivatableAbilities.RawFacts.OfType<ActivatableAbility>()
                                 .Count(a => a.Blueprint.Group == group && IsEffectivelyOn(caster, a));
                             if (activeInGroup >= cap) {
                                 Main.Log($"[CSD] Phase0 skip '{actBuff.Name}' on {caster.CharacterName} (group {group} cap reached {activeInGroup}/{cap})");
@@ -948,7 +1008,7 @@ namespace BuffIt2TheLimit {
                                     Main.Log($"[CSD] Phase0 mounted {caster.CharacterName} on {mount.CharacterName} ('{actBuff.Name}')");
                                     activatablesActivated++;
                                     if (actBuff.DeactivateAfterRounds > 0)
-                                        GlobalBubbleBuffer.RoundLimitWatcher?.TrackActivation(caster, activatable.Blueprint.AssetGuid);
+                                        GlobalBubbleBuffer.RoundLimitWatcher?.TrackActivation(caster, activatable.Blueprint.Gid());
                                     break;
                                 case MountResult.NoCandidate:
                                     Main.Log($"[CSD] Phase0 skip '{actBuff.Name}' on {caster.CharacterName} (no suitable mount: needs their own conscious pet of larger size in the party)");
@@ -964,11 +1024,11 @@ namespace BuffIt2TheLimit {
                         Main.Log($"[CSD] Phase0 activate '{targetLabel}' on {caster.CharacterName}");
                         ClearConflictingFuryWeapons(caster, target);
                         target.IsOn = true;
-                        if (!target.IsStarted)
+                        if (!IsRunning(target))
                             target.TryStart();
                         activatablesActivated++;
                         if (actBuff.DeactivateAfterRounds > 0)
-                            GlobalBubbleBuffer.RoundLimitWatcher?.TrackActivation(caster, activatable.Blueprint.AssetGuid);
+                            GlobalBubbleBuffer.RoundLimitWatcher?.TrackActivation(caster, activatable.Blueprint.Gid());
                     } catch (Exception ex) {
                         Main.Error(ex, $"combat start: activating {actBuff.Name}");
                     }
@@ -1055,19 +1115,25 @@ namespace BuffIt2TheLimit {
             Main.Log($"[CSD] Summary activatables={activatablesActivated} spell-tasks={tasks.Count} skipped-already-active={skippedAlreadyActive}");
 
             if (tasks.Count > 0) {
+#if KINGMAKER
+                IBuffExecutionEngine engine = new KmExecutionEngine();
+#else
                 IBuffExecutionEngine engine = State.SkipAnimationsOnCombatStart
                     ? (IBuffExecutionEngine)new InstantExecutionEngine()
                     : new AnimatedExecutionEngine();
+#endif
                 Main.Log($"[CSD] Engine={engine.GetType().Name} dispatching {tasks.Count} tasks");
                 var castingCoroutine = engine.CreateSpellCastRoutine(tasks);
                 BubbleBuffGlobalController.Instance.StartCoroutine(castingCoroutine);
             }
 
+#if !KINGMAKER
             if (actuallyCast + activatablesActivated > 0) {
                 var message = new CombatLogMessage(messageString, Color.blue, PrefixIcon.RightArrow);
                 var messageLog = LogThreadService.Instance.m_Logs[LogChannelType.Common].First(x => x is MessageLogThread);
                 messageLog.AddMessage(message);
             }
+#endif
         }
     }
     //castTask.Retentions.Any
@@ -1109,13 +1175,22 @@ namespace BuffIt2TheLimit {
     public class Retentions {
         private CastTask _castTask;
 
+        // WotR arcanist features; none of them exists in Kingmaker.
+        private bool HasFeature(BlueprintFeature feature) {
+#if KINGMAKER
+            return false;
+#else
+            return _castTask.Caster.HasFact(feature);
+#endif
+        }
+
         public Retentions(CastTask castTask) {
             _castTask = castTask;
         }
 
         public bool ShareTransmutation {
             get {
-                var casterHasAvailable = _castTask.Caster.HasFact(Resources.GetBlueprint<BlueprintFeature>("c4ed8d1a90c93754eacea361653a7d56"));
+                var casterHasAvailable = HasFeature(Resources.GetBlueprint<BlueprintFeature>("c4ed8d1a90c93754eacea361653a7d56"));
                 var userSelectedForSpell = _castTask.ShareTransmutation;
 
                 return casterHasAvailable && userSelectedForSpell;
@@ -1124,7 +1199,7 @@ namespace BuffIt2TheLimit {
 
         public bool ImprovedShareTransmutation {
             get {
-                var casterHasAvailable = _castTask.Caster.HasFact(Resources.GetBlueprint<BlueprintFeature>("c94d764d2ce3cd14f892f7c00d9f3a70"));
+                var casterHasAvailable = HasFeature(Resources.GetBlueprint<BlueprintFeature>("c94d764d2ce3cd14f892f7c00d9f3a70"));
                 var userSelectedForSpell = _castTask.ShareTransmutation;
 
                 return casterHasAvailable && userSelectedForSpell;
@@ -1133,7 +1208,7 @@ namespace BuffIt2TheLimit {
 
         public bool PowerfulChange {
             get {
-                var casterHasAvailable = _castTask.Caster.HasFact(Resources.GetBlueprint<BlueprintFeature>("5e01e267021bffe4e99ebee3fdc872d1"));
+                var casterHasAvailable = HasFeature(Resources.GetBlueprint<BlueprintFeature>("5e01e267021bffe4e99ebee3fdc872d1"));
                 var userSelectedForSpell = _castTask.PowerfulChange;
 
                 return casterHasAvailable && userSelectedForSpell;
@@ -1142,7 +1217,7 @@ namespace BuffIt2TheLimit {
 
         public bool ImprovedPowerfulChange {
             get {
-                var casterHasAvailable = _castTask.Caster.HasFact(Resources.GetBlueprint<BlueprintFeature>("c94d764d2ce3cd14f892f7c00d9f3a70"));
+                var casterHasAvailable = HasFeature(Resources.GetBlueprint<BlueprintFeature>("c94d764d2ce3cd14f892f7c00d9f3a70"));
                 var userSelectedForSpell = _castTask.PowerfulChange;
 
                 return casterHasAvailable && userSelectedForSpell;

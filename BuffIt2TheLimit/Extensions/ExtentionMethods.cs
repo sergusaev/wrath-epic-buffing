@@ -15,7 +15,9 @@ using Kingmaker.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+#if !KINGMAKER
 using BuffIt2TheLimit.Utilities;
+#endif
 using UnityEngine;
 using static Kingmaker.Blueprints.Classes.Prerequisites.Prerequisite;
 using Kingmaker.UnitLogic.Buffs.Blueprints;
@@ -48,6 +50,7 @@ namespace BuffIt2TheLimit.Extensions {
                     return 'H';
                 case Metamagic.Reach:
                     return 'R';
+#if !KINGMAKER
                 case Metamagic.CompletelyNormal:
                     return 'N';
                 case Metamagic.Persistent:
@@ -56,6 +59,7 @@ namespace BuffIt2TheLimit.Extensions {
                     return 'S';
                 case Metamagic.Bolstered:
                     return 'B';
+#endif
                 default:
                     return '?';
             }
@@ -81,12 +85,38 @@ namespace BuffIt2TheLimit.Extensions {
         public static bool IsLong(this ContextActionWeaponEnchantPool action) {
             return action.DurationValue?.Rate != DurationRate.Rounds;
         }
+#if !KINGMAKER
         public static bool IsLong(this EnhanceWeapon action) {
             return action.DurationValue?.Rate != DurationRate.Rounds;
         }
+#endif
 
+        public static BuffDuration Duration(this ContextDurationValue value) => value?.Rate switch {
+            null => BuffDuration.Unknown,
+            DurationRate.Rounds => BuffDuration.Rounds,
+            DurationRate.Minutes => BuffDuration.Minutes,
+            DurationRate.TenMinutes => BuffDuration.TenMinutes,
+            _ => BuffDuration.Hours
+        };
+        public static BuffDuration Duration(this ContextActionApplyBuff action) {
+            if (action.Permanent)
+                return BuffDuration.Hours;
+            if (action.UseDurationSeconds)
+                return action.DurationSeconds < 60 ? BuffDuration.Rounds
+                    : action.DurationSeconds < 600 ? BuffDuration.Minutes
+                    : action.DurationSeconds < 3600 ? BuffDuration.TenMinutes
+                    : BuffDuration.Hours;
+            return action.DurationValue.Duration();
+        }
+        public static BuffDuration Duration(this ContextActionEnchantWornItem action) =>
+            action.Permanent ? BuffDuration.Hours : action.DurationValue.Duration();
+
+#if KINGMAKER
+        public static Guid BGuid(this Kingmaker.Blueprints.Facts.Fact fact) {
+#else
         public static Guid BGuid(this EntityFact fact) {
-            return fact.Blueprint.AssetGuid.m_Guid;
+#endif
+            return fact.Blueprint.Gid();
         }
     }
 
@@ -108,7 +138,11 @@ namespace BuffIt2TheLimit.Extensions {
                 } else if (action is ContextActionsOnPet enchantPet) {
                     LogVerbose(level + 1, $"FOUND: enchantPet {action.name}");
                     foreach (var subEffect in enchantPet.Actions.Actions.Where(a => a != null).SelectMany(a => a.GetBeneficialBuffs(level + 1))) {
+#if KINGMAKER
+                        subEffect.PetType = PetType.AnimalCompanion;
+#else
                         subEffect.PetType = enchantPet.PetType;
+#endif
                         yield return subEffect;
                     }
                 } else if (action is ContextActionEnchantWornItem enchantItem) {
@@ -117,15 +151,19 @@ namespace BuffIt2TheLimit.Extensions {
                 } else if (action is ContextActionWeaponEnchantPool enchantPool) {
                     LogVerbose(level + 1, $"FOUND: enchantPool {action.name}");
                     yield return new WeaponEnchantPoolEffect(enchantPool);
+#if !KINGMAKER
                 } else if (action is EnhanceWeapon enhanceWeapon) {
                     LogVerbose(level + 1, $"FOUND: enhanceWeapon {action.name}");
                     yield return new EnhanceWeaponEffect(enhanceWeapon);
+#endif
+#if !KINGMAKER
                 } else if (action.GetType().Name.Equals("ContextActionApplyBuffRanks")) {
                     // This is from TabletopTweaks-Core. Since it's all reflection don't bother with the full logic,
                     // just add it, treat it as long, and let users hide if they want.
                     LogVerbose(level + 1, $"FOUND: applyBuffRanks {action.name}");
                     var buffRef = (BlueprintBuffReference) action.GetType().GetField("m_Buff").GetValue(action);
                     yield return new BuffEffect(buffRef.deserializedGuid.m_Guid);
+#endif
                 } else if (action is ContextActionPartyMembers applyParty) {
                     LogVerbose(level, $"recursing into partyMembers");
                     foreach (var subEffect in applyParty.Action.Actions.Where(a => a != null).SelectMany(a => a.GetBeneficialBuffs(level + 1)))
@@ -134,7 +172,7 @@ namespace BuffIt2TheLimit.Extensions {
                     LogVerbose(level, $"recursing into spawnArea");
                     if (spawnArea.AreaEffect.TryGetComponent<AbilityAreaEffectBuff>(out var areaBuff) && areaBuff.Buff.IsBeneficial(level + 1)) {
                         LogVerbose(level, $"FOUND: areaBuff {areaBuff.name}");
-                        yield return new AreaBuffEffect(areaBuff, spawnArea.DurationValue.Rate != DurationRate.Rounds);
+                        yield return new AreaBuffEffect(areaBuff, spawnArea.DurationValue.Rate != DurationRate.Rounds, spawnArea.DurationValue.Duration());
                     }
                 } else if (action is Conditional maybe) {
                     bool takeYes = true;
@@ -196,15 +234,25 @@ namespace BuffIt2TheLimit.Extensions {
             typeof(AddFactContextActions),
             typeof(UniqueBuff),
             typeof(SpellDescriptorComponent),
+#if !KINGMAKER
             typeof(RemoveWhenCombatEnded),
+#endif
             typeof(RemoveBuffIfCasterIsMissing),
+#if !KINGMAKER
             typeof(NotDispelable),
+#endif
             typeof(SetBuffOnsetDelay),
+#if !KINGMAKER
             typeof(FakeDeathAnimationState),
+#endif
             typeof(SpecialAnimationState),
+#if !KINGMAKER
             typeof(CustomImmuneMessageComponent),
+#endif
             typeof(AddSpellSchool),
+#if !KINGMAKER
             typeof(IsPositiveEffect),
+#endif
             typeof(SummonedUnitBuff),
         };
 
@@ -218,7 +266,11 @@ namespace BuffIt2TheLimit.Extensions {
             SpellDescriptor.Confusion | SpellDescriptor.Blindness | SpellDescriptor.Curse |
             SpellDescriptor.Death | SpellDescriptor.Sleep | SpellDescriptor.StatDebuff |
             SpellDescriptor.Bleed | SpellDescriptor.Petrified | SpellDescriptor.NegativeEmotion |
-            SpellDescriptor.MovementImpairing | SpellDescriptor.NegativeLevel;
+            SpellDescriptor.MovementImpairing
+#if !KINGMAKER
+            | SpellDescriptor.NegativeLevel
+#endif
+            ;
 
         public static bool IsBeneficial(this BlueprintBuff buff, int level = 0) {
             // Use the game's own Harmful flag
@@ -227,7 +279,12 @@ namespace BuffIt2TheLimit.Extensions {
             }
 
             // Check SpellDescriptor for known debuff descriptors
-            if ((buff.SpellDescriptor & HarmfulDescriptors) != SpellDescriptor.None) {
+#if KINGMAKER
+            var descriptor = buff.GetComponent<SpellDescriptorComponent>()?.Descriptor.Value ?? SpellDescriptor.None;
+#else
+            var descriptor = buff.SpellDescriptor;
+#endif
+            if ((descriptor & HarmfulDescriptors) != SpellDescriptor.None) {
                 return false;
             }
 
@@ -298,8 +355,13 @@ namespace BuffIt2TheLimit.Extensions {
                 foreach (var action in runAction.Actions.Actions.Where(a => a != null).FlattenAllActions()) {
                     if (action is Conditional cond && cond.ConditionsChecker?.Conditions != null) {
                         foreach (var c in cond.ConditionsChecker.Conditions) {
+#if KINGMAKER
+                            if (c is ContextConditionHasFact hasFact && hasFact.Not && hasFact.Fact != null) {
+                                var guid = hasFact.Fact.Gid();
+#else
                             if (c is ContextConditionHasFact hasFact && hasFact.Not && hasFact.m_Fact != null) {
                                 var guid = hasFact.m_Fact.deserializedGuid.m_Guid;
+#endif
                                 if (guid != Guid.Empty)
                                     result.Add(guid);
                             }
@@ -329,15 +391,15 @@ namespace BuffIt2TheLimit.Extensions {
             return false;
         }
 
-        public static bool HasComponent<T>(this BlueprintScriptableObject bp) => bp.GetComponent<T>() != null;
-        public static bool HasComponents<T1, T2>(this BlueprintScriptableObject bp) => bp.HasComponent<T1>() && bp.HasComponent<T2>();
-        public static bool HasComponents<T1, T2, T3>(this BlueprintScriptableObject bp) => bp.HasComponent<T1>() && bp.HasComponent<T2>() && bp.HasComponent<T3>();
-        public static bool HasComponents<T1, T2, T3, T4>(this BlueprintScriptableObject bp) => bp.HasComponent<T1>() && bp.HasComponent<T2>() && bp.HasComponent<T3>() && bp.HasComponent<T4>();
-        public static bool HasAnyComponents<T1, T2>(this BlueprintScriptableObject bp) => bp.HasComponent<T1>() || bp.HasComponent<T2>();
-        public static bool HasAnyComponents<T1, T2, T3>(this BlueprintScriptableObject bp) => bp.HasComponent<T1>() || bp.HasComponent<T2>() || bp.HasComponent<T3>();
-        public static bool HasAnyComponents<T1, T2, T3, T4>(this BlueprintScriptableObject bp) => bp.HasComponent<T1>() || bp.HasComponent<T2>() || bp.HasComponent<T3>() || bp.HasComponent<T4>();
+        public static bool HasComponent<T>(this BlueprintScriptableObject bp) where T : class => bp.GetComponent<T>() != null;
+        public static bool HasComponents<T1, T2>(this BlueprintScriptableObject bp) where T1 : class where T2 : class => bp.HasComponent<T1>() && bp.HasComponent<T2>();
+        public static bool HasComponents<T1, T2, T3>(this BlueprintScriptableObject bp) where T1 : class where T2 : class where T3 : class => bp.HasComponent<T1>() && bp.HasComponent<T2>() && bp.HasComponent<T3>();
+        public static bool HasComponents<T1, T2, T3, T4>(this BlueprintScriptableObject bp) where T1 : class where T2 : class where T3 : class where T4 : class => bp.HasComponent<T1>() && bp.HasComponent<T2>() && bp.HasComponent<T3>() && bp.HasComponent<T4>();
+        public static bool HasAnyComponents<T1, T2>(this BlueprintScriptableObject bp) where T1 : class where T2 : class => bp.HasComponent<T1>() || bp.HasComponent<T2>();
+        public static bool HasAnyComponents<T1, T2, T3>(this BlueprintScriptableObject bp) where T1 : class where T2 : class where T3 : class => bp.HasComponent<T1>() || bp.HasComponent<T2>() || bp.HasComponent<T3>();
+        public static bool HasAnyComponents<T1, T2, T3, T4>(this BlueprintScriptableObject bp) where T1 : class where T2 : class where T3 : class where T4 : class => bp.HasComponent<T1>() || bp.HasComponent<T2>() || bp.HasComponent<T3>() || bp.HasComponent<T4>();
 
-        public static bool TryGetComponent<T>(this BlueprintScriptableObject bp, out T component) {
+        public static bool TryGetComponent<T>(this BlueprintScriptableObject bp, out T component) where T : class {
             component = bp.GetComponent<T>();
             return component != null;
         }
@@ -379,6 +441,7 @@ namespace BuffIt2TheLimit.Extensions {
             }
             return List;
         }
+#if !KINGMAKER
         public static V PutIfAbsent<K, V>(this IDictionary<K, V> self, K key, V value) where V : class {
             V oldValue;
             if (!self.TryGetValue(key, out oldValue)) {
@@ -821,6 +884,7 @@ namespace BuffIt2TheLimit.Extensions {
                 return false;
             }
         }
+#endif
     }
 }
 
