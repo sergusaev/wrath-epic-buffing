@@ -82,6 +82,7 @@ namespace BuffIt2TheLimit {
         private TextMeshProUGUI groupsNote;
         private int groupsCursor;
         private BuffGroup? deleteArmed;
+        private GameObject groupsDeleteHint;
         private float deleteArmedUntil;
 
         // members
@@ -128,9 +129,12 @@ namespace BuffIt2TheLimit {
         // help
         private GameObject helpRoot;
         private TextMeshProUGUI helpText;
-        private List<string> helpLines = new();
-        private int helpTop;
-        private const int HelpVisibleLines = 22;
+        private RectTransform helpThumb;
+        private float helpOffset;
+        private readonly List<int> helpSections = new();
+        private List<float> helpSectionOffsets;
+        private const float HelpHeight = 720f;
+        private const float HelpStep = 46f;
 
         private RepeatInput vertical;
         private RepeatInput horizontal;
@@ -489,6 +493,7 @@ namespace BuffIt2TheLimit {
                 case Page.Members: SwitchMemberGroup(delta); break;
                 case Page.Name: CycleDuration(delta); break;
                 case Page.Editor: SwitchTab(delta); break;
+                case Page.Help: JumpSection(delta); break;
             }
         }
 
@@ -519,10 +524,7 @@ namespace BuffIt2TheLimit {
                     cursor = Mathf.Clamp(cursor + delta, 0, filtered.Count - 1);
                     RenderEditor();
                     break;
-                case Page.Help:
-                    helpTop = Mathf.Clamp(helpTop + delta, 0, Mathf.Max(0, helpLines.Count - HelpVisibleLines));
-                    RenderHelp();
-                    break;
+                case Page.Help: ScrollHelp(delta * HelpStep); break;
             }
         }
 
@@ -572,9 +574,7 @@ namespace BuffIt2TheLimit {
                 case Page.Name: RenderName(); break;
                 case Page.Editor: RebuildFilter(keepBuff: null); break;
                 case Page.Help:
-                    helpLines = BuildHelp();
-                    helpTop = 0;
-                    RenderHelp();
+                    OpenHelp();
                     break;
             }
         }
@@ -784,6 +784,9 @@ namespace BuffIt2TheLimit {
             groupList = PadGroups.All();
             EnsureRows(groupRows, groupsRowHolder, GroupsRowCount, 21, withBox: false);
             groupsCursor = Mathf.Clamp(groupsCursor, 0, GroupsRowCount - 1);
+            // Only custom groups can be deleted, so RB is offered only on them.
+            if (groupsDeleteHint != null)
+                groupsDeleteHint.SetActive(groupsCursor < groupList.Count && PadGroups.IsCustom(groupList[groupsCursor]));
             var state = State;
             for (int i = 0; i < groupRows.Count; i++) {
                 var row = groupRows[i];
@@ -808,7 +811,7 @@ namespace BuffIt2TheLimit {
                     : "pad.groups.shown".i8();
                 string kind = PadGroups.IsCustom(group) ? "" : $" <color=#8A847A>{"pad.groups.builtin".i8()}</color>";
                 string name = deleteArmed == group
-                    ? $"<color=#E08A7A>{"pad.groups.confirm".i8()}</color>"
+                    ? $"<color=#E08A7A>{T("pad.groups.confirm")}</color>"
                     : $"<b>{Trim(PadGroups.Name(group), 30)}</b>{kind}";
                 row.Text.text = $"{name}<pos=42%><size=85%>{PadGroups.DurationName(PadGroups.DurationOf(group))}</size>"
                     + $"<pos=68%><size=85%>{string.Format("pad.groups.count".i8(), members, on)}</size><pos=87%><size=85%>{visibility}</size>";
@@ -829,7 +832,7 @@ namespace BuffIt2TheLimit {
                 return;
             var group = groupList[groupsCursor];
             if (!PadGroups.IsCustom(group)) {
-                groupsNote.text = "pad.groups.nodelete".i8();
+                groupsNote.text = T("pad.groups.nodelete");
                 return;
             }
             if (deleteArmed != group) {
@@ -969,7 +972,7 @@ namespace BuffIt2TheLimit {
         private void ToggleTick() {
             var buff = SelectedMember;
             if (buff == null || !PadGroups.IsMember(buff, memberGroup)) {
-                membersNote.text = "pad.members.tick.outside".i8();
+                membersNote.text = T("pad.members.tick.outside");
                 return;
             }
             PadGroups.SetOn(buff, memberGroup, !buff.ActiveIn(memberGroup));
@@ -980,10 +983,10 @@ namespace BuffIt2TheLimit {
         private void AutoFill() {
             int added = PadGroups.AutoFill(memberGroup);
             if (added < 0) {
-                membersNote.text = "pad.members.fill.any".i8();
+                membersNote.text = T("pad.members.fill.any");
                 return;
             }
-            membersNote.text = string.Format("pad.members.fill".i8(), added);
+            membersNote.text = string.Format(T("pad.members.fill"), added);
             Commit();
             RebuildMembers(SelectedMember);
         }
@@ -1153,7 +1156,7 @@ namespace BuffIt2TheLimit {
                 groupList = PadGroups.All();
                 groupsCursor = groupList.IndexOf(created.Value);
                 OpenMembers(created.Value, Page.Groups);
-                membersNote.text = duration == GroupDuration.Any ? "pad.members.new.any".i8() : "pad.members.new".i8();
+                membersNote.text = duration == GroupDuration.Any ? T("pad.members.new.any") : T("pad.members.new");
             } else {
                 PadGroups.Rename(nameTarget.Value, nameBuffer, duration);
                 ShowPage(Page.Groups);
@@ -1366,79 +1369,63 @@ namespace BuffIt2TheLimit {
 
         // ---------- help page ----------
 
-        private void RenderHelp() {
-            var visible = helpLines.Skip(helpTop).Take(HelpVisibleLines);
-            string position = helpLines.Count > HelpVisibleLines
-                ? $"\n<color=#8A847A>{helpTop + 1}–{Mathf.Min(helpTop + HelpVisibleLines, helpLines.Count)} / {helpLines.Count}</color>"
-                : "";
-            helpText.text = string.Join("\n", visible) + position;
+        private void OpenHelp() {
+            helpSections.Clear();
+            helpSectionOffsets = null;
+            helpText.spriteAsset = PadHelp.IconAsset;
+            helpText.text = PadHelp.Build(helpSections);
+            helpOffset = 0;
+            ScrollHelp(0);
         }
 
-        private List<string> BuildHelp() {
-            var lines = new List<string>();
-            var body = string.Format("pad.help.body".i8(), PadGroups.Name(BuffGroup.Long), PadGroups.Name(BuffGroup.Important));
-            foreach (var line in body.Split('\n'))
-                lines.Add(line.StartsWith("#") ? $"<color=#E8C46A><b>{line.TrimStart('#', ' ')}</b></color>" : line);
-            lines.Add("");
-            lines.Add($"<color=#E8C46A><b>{"pad.help.example.title".i8()}</b></color>");
-            try {
-                lines.AddRange(BuildExample());
-            } catch (Exception ex) {
-                Main.Error(ex, "PadQuickMenu.BuildExample");
-                lines.Add("pad.help.example.none".i8());
+        private float HelpMaxOffset {
+            get {
+                Canvas.ForceUpdateCanvases();
+                return Mathf.Max(0, helpText.preferredHeight - HelpHeight);
             }
-            return lines;
         }
 
-        // Example built from the current party and buff setup.
-        private List<string> BuildExample() {
-            var lines = new List<string>();
-            var state = State;
-            var party = Party;
-            if (state?.BuffList == null || party.Count == 0) {
-                lines.Add("pad.help.example.none".i8());
-                return lines;
+        private void ScrollHelp(float by) {
+            float max = HelpMaxOffset;
+            helpOffset = Mathf.Clamp(helpOffset + by, 0, max);
+            ((RectTransform)helpText.transform).anchoredPosition = new Vector2(0, helpOffset);
+            bool scrolls = max > 1f;
+            helpThumb.parent.gameObject.SetActive(scrolls);
+            if (scrolls) {
+                float visible = HelpHeight / (HelpHeight + max);
+                float start = helpOffset / (HelpHeight + max);
+                helpThumb.anchorMax = new Vector2(1, 1 - start);
+                helpThumb.anchorMin = new Vector2(0, 1 - start - visible);
             }
-            var buffs = state.BuffList.Where(b => !b.HideBecause(HideReason.Blacklisted) && b.CasterQueue.Count > 0).ToList();
-            string Names(IEnumerable<UnitEntityData> units) => string.Join(", ", units.Select(u => u.CharacterName));
+        }
 
-            var partyBuff = buffs.FirstOrDefault(b => PadGroups.KindOf(b, out var t) == TargetKind.Party && t.Count > 1
-                                                      && PadGroups.Fits(b, GroupDuration.TenMinutesPlus));
-            if (partyBuff != null) {
-                PadGroups.KindOf(partyBuff, out var targets);
-                var caster = partyBuff.CasterQueue[0].who;
-                lines.Add(string.Format("pad.help.example.party".i8(), partyBuff.Name, caster?.CharacterName ?? "?",
-                    Names(targets), PadGroups.Name(BuffGroup.Long)));
+        // LB/RB jump to the previous or next heading. Offsets are measured on first use,
+        // when the text already has its final width.
+        private void JumpSection(int delta) {
+            if (helpSectionOffsets == null) {
+                helpSectionOffsets = new List<float>();
+                try {
+                    helpText.ForceMeshUpdate();
+                    var info = helpText.textInfo;
+                    foreach (int source in helpSections) {
+                        for (int i = 0; i < info.characterCount; i++) {
+                            if (info.characterInfo[i].index < source || !info.characterInfo[i].isVisible)
+                                continue;
+                            helpSectionOffsets.Add(Mathf.Max(0, -info.lineInfo[info.characterInfo[i].lineNumber].ascender - 8));
+                            break;
+                        }
+                    }
+                } catch (Exception ex) {
+                    Main.Error(ex, "PadQuickMenu.JumpSection");
+                }
             }
-
-            var selfBuff = buffs.FirstOrDefault(b => PadGroups.KindOf(b, out _) == TargetKind.Self);
-            if (selfBuff != null) {
-                PadGroups.KindOf(selfBuff, out var targets);
-                lines.Add(string.Format("pad.help.example.self".i8(), selfBuff.Name, Names(targets)));
-            }
-
-            var rounds = buffs.FirstOrDefault(b => PadGroups.Span(b) == BuffDuration.Rounds && PadGroups.KindOf(b, out _) != TargetKind.None);
-            if (rounds != null) {
-                bool inRounds = rounds.ActiveIn(BuffGroup.Important);
-                lines.Add(string.Format(inRounds ? "pad.help.example.rounds.ok".i8() : "pad.help.example.rounds".i8(),
-                    rounds.Name, PadGroups.Name(BuffGroup.Important)));
-            }
-
-            var custom = PadGroups.All().FirstOrDefault(PadGroups.IsCustom);
-            if (custom != default(BuffGroup) && PadGroups.IsCustom(custom)) {
-                int count = buffs.Count(b => PadGroups.IsMember(b, custom));
-                lines.Add(string.Format("pad.help.example.custom".i8(), PadGroups.Name(custom), count));
+            float target;
+            if (delta > 0) {
+                target = helpSectionOffsets.Where(o => o > helpOffset + 2).DefaultIfEmpty(helpOffset + HelpHeight - HelpStep).First();
             } else {
-                lines.Add("pad.help.example.newgroup".i8());
+                target = helpSectionOffsets.Where(o => o < helpOffset - 2).DefaultIfEmpty(0).Last();
             }
-
-            var tickable = buffs.FirstOrDefault(b => b.InGroups.Count > 0 && b.Requested > 0 && b.ActiveIn(b.InGroups.First()));
-            if (tickable != null)
-                lines.Add(string.Format("pad.help.example.tick".i8(), tickable.Name, PadGroups.Name(tickable.InGroups.First())));
-
-            if (lines.Count == 0)
-                lines.Add("pad.help.example.none".i8());
-            return lines;
+            ScrollHelp(target - helpOffset);
         }
 
         // ---------- helpers ----------
@@ -1447,6 +1434,9 @@ namespace BuffIt2TheLimit {
             string.IsNullOrEmpty(s) || s.Length <= max ? s ?? "" : s.Substring(0, max - 1) + "…";
 
         internal static string GroupName(BuffGroup group) => PadGroups.Name(group);
+
+        // Localized text with button tokens turned into icons.
+        private static string T(string key) => PadHelp.Tokens(key.i8());
 
         private static string FormatTime(TimeSpan t) =>
             t.TotalHours >= 1
@@ -1515,13 +1505,14 @@ namespace BuffIt2TheLimit {
             menu.groupsRoot = MakeContainer(root.transform, "Groups", 8);
             menu.groupsRowHolder = MakeContainer(menu.groupsRoot.transform, "Rows", 5).transform;
             menu.groupsNote = MakeText(menu.groupsRoot.transform, font, "", 19, FontStyles.Normal, TitleColor);
-            MakeHintBar(menu.groupsRoot.transform, font,
+            var groupHints = MakeHintBar(menu.groupsRoot.transform, font,
                 (new[] { RewiredActionType.DPadVertical }, "pad.h.select"),
                 (new[] { RewiredActionType.Confirm }, "pad.h.open"),
                 (new[] { RewiredActionType.Func02 }, "pad.h.rename"),
                 (new[] { RewiredActionType.Func01 }, "pad.h.hide"),
                 (new[] { RewiredActionType.RightUp }, "pad.h.delete"),
                 (new[] { RewiredActionType.Decline }, "pad.h.back"));
+            menu.groupsDeleteHint = groupHints[4];
             menu.groupsRoot.SetActive(false);
 
             // members
@@ -1554,7 +1545,7 @@ namespace BuffIt2TheLimit {
             menu.nameDurationText.enableWordWrapping = false;
             MakeIcon(durationRow.transform, font, RewiredActionType.RightUp, 32);
             menu.keyHolder = MakeContainer(menu.nameRoot.transform, "Keyboard", 6).transform;
-            MakeText(menu.nameRoot.transform, font, "pad.name.note".i8(), 18, FontStyles.Normal, DimColor);
+            MakeText(menu.nameRoot.transform, font, T("pad.name.note"), 18, FontStyles.Normal, DimColor);
             MakeHintBar(menu.nameRoot.transform, font,
                 (new[] { RewiredActionType.DPadVertical, RewiredActionType.DPadHorizontal }, "pad.h.key"),
                 (new[] { RewiredActionType.Confirm }, "pad.h.type"),
@@ -1595,9 +1586,37 @@ namespace BuffIt2TheLimit {
 
             // help
             menu.helpRoot = MakeContainer(root.transform, "Help", 8);
-            menu.helpText = MakeText(menu.helpRoot.transform, font, "", 19, FontStyles.Normal, TextColor);
+            var viewport = new GameObject("Viewport", typeof(RectTransform));
+            viewport.transform.SetParent(menu.helpRoot.transform, false);
+            viewport.AddComponent<RectMask2D>();
+            var viewportSize = viewport.AddComponent<LayoutElement>();
+            viewportSize.preferredHeight = HelpHeight;
+            viewportSize.flexibleWidth = 1;
+            menu.helpText = MakeText(viewport.transform, font, "", 20, FontStyles.Normal, TextColor);
+            menu.helpText.lineSpacing = 6;
+            var helpRect = (RectTransform)menu.helpText.transform;
+            helpRect.anchorMin = new Vector2(0, 1);
+            helpRect.anchorMax = new Vector2(1, 1);
+            helpRect.pivot = new Vector2(0.5f, 1);
+            helpRect.offsetMin = new Vector2(4, 0);
+            helpRect.offsetMax = new Vector2(-24, 0);
+            menu.helpText.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            var track = new GameObject("Track", typeof(RectTransform));
+            track.transform.SetParent(viewport.transform, false);
+            var trackRect = (RectTransform)track.transform;
+            trackRect.anchorMin = new Vector2(1, 0);
+            trackRect.anchorMax = new Vector2(1, 1);
+            trackRect.pivot = new Vector2(1, 0.5f);
+            trackRect.sizeDelta = new Vector2(6, 0);
+            track.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.08f);
+            var thumb = new GameObject("Thumb", typeof(RectTransform));
+            thumb.transform.SetParent(track.transform, false);
+            menu.helpThumb = (RectTransform)thumb.transform;
+            menu.helpThumb.offsetMin = menu.helpThumb.offsetMax = Vector2.zero;
+            thumb.AddComponent<Image>().color = new Color(0.93f, 0.8f, 0.5f, 0.7f);
             MakeHintBar(menu.helpRoot.transform, font,
                 (new[] { RewiredActionType.DPadVertical }, "pad.h.scroll"),
+                (new[] { RewiredActionType.LeftUp, RewiredActionType.RightUp }, "pad.h.section"),
                 (new[] { RewiredActionType.Decline }, "pad.h.back"));
             menu.helpRoot.SetActive(false);
 
@@ -1605,7 +1624,8 @@ namespace BuffIt2TheLimit {
         }
 
         // Button hints the way the game draws them: the console icon of each button, then a label.
-        private static void MakeHintBar(Transform parent, TMP_FontAsset font, params (RewiredActionType[] buttons, string labelKey)[] items) {
+        private static List<GameObject> MakeHintBar(Transform parent, TMP_FontAsset font, params (RewiredActionType[] buttons, string labelKey)[] items) {
+            var made = new List<GameObject>();
             var separator = new GameObject("HintSeparator", typeof(RectTransform));
             separator.transform.SetParent(parent, false);
             separator.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.12f);
@@ -1618,7 +1638,9 @@ namespace BuffIt2TheLimit {
                     MakeIcon(item.transform, font, button, 30);
                 var label = MakeText(item.transform, font, labelKey.i8(), 19, FontStyles.Normal, DimColor);
                 label.enableWordWrapping = false;
+                made.Add(item);
             }
+            return made;
         }
 
         private static GameObject MakeHorizontal(Transform parent, string name, float spacing, TextAnchor alignment) {
@@ -1749,6 +1771,8 @@ namespace BuffIt2TheLimit {
             text.color = color;
             text.richText = true;
             text.enableWordWrapping = true;
+            if (PadHelp.IconAsset != null)
+                text.spriteAsset = PadHelp.IconAsset;
             text.text = value;
             return text;
         }

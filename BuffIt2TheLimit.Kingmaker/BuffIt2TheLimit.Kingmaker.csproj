@@ -33,6 +33,7 @@
 		<Compile Include="..\BuffIt2TheLimit\SaveState.cs" />
 		<Compile Include="..\BuffIt2TheLimit\ShortcutBinding.cs" />
 		<Compile Include="..\BuffIt2TheLimit\PadGroups.cs" />
+		<Compile Include="..\BuffIt2TheLimit\PadHelp.cs" />
 		<Compile Include="..\BuffIt2TheLimit\PadQuickMenu.cs" />
 		<Compile Include="..\BuffIt2TheLimit\PadGestures.cs" />
 		<Compile Include="..\BuffIt2TheLimit\Extensions\ExtentionMethods.cs" />
