@@ -1,5 +1,5 @@
 #!/bin/bash
-# Install the Release build of Buff It 2 The Limit (Pad) on the Steam Deck.
+# Build (Release) and install Buff It 2 The Limit (Pad) on the Steam Deck.
 # Usage: ./deploy.sh [--bind-menu] [--kingmaker]
 #   --kingmaker  install the Kingmaker build (BuffIt2TheLimit.Kingmaker) instead of the WotR one.
 #   --bind-menu  in every bi2tl-*.json: open menu = F7 (Steam Input L5 tap), Long = F6,
@@ -23,7 +23,13 @@ for a in "$@"; do
   esac
 done
 
+DOTNET="${DOTNET:-$HOME/.dotnet/dotnet}"
+build() {
+  "$DOTNET" build "$1" -c Release -p:SolutionDir="$HERE/" --nologo -v q || { echo "build failed: $1"; exit 1; }
+}
+
 if [ "$KM" = 1 ]; then
+  build "$HERE/BuffIt2TheLimit.Kingmaker/BuffIt2TheLimit.Kingmaker.csproj"
   KM_MOD_DIR="/home/deck/.local/share/Steam/steamapps/common/Pathfinder Kingmaker/Mods/PadBuffsKingmaker"
   KM_OUT="$HERE/BuffIt2TheLimit.Kingmaker/bin/Release"
   ssh -o ConnectTimeout=5 "$DECK" true || { echo "deck unreachable"; exit 1; }
@@ -32,10 +38,13 @@ if [ "$KM" = 1 ]; then
   fi
   ssh "$DECK" "mkdir -p '$KM_MOD_DIR/UserSettings' && rm -f '$KM_MOD_DIR'/*.cache"
   scp -q "$KM_OUT/PadBuffsKingmaker.dll" "$KM_OUT/Info.json" "$DECK:$KM_MOD_DIR/"
+  [ "$(md5 -q "$KM_OUT/PadBuffsKingmaker.dll")" = "$(ssh "$DECK" "md5sum '$KM_MOD_DIR/PadBuffsKingmaker.dll'" | cut -d' ' -f1)" ] \
+    || { echo "checksum mismatch after copy"; exit 1; }
   echo "installed to $DECK:$KM_MOD_DIR"
   exit 0
 fi
 
+build "$HERE/BuffIt2TheLimit/BuffIt2TheLimit.csproj"
 ssh -o ConnectTimeout=5 "$DECK" true || { echo "deck unreachable"; exit 1; }
 if ssh "$DECK" "pgrep -f '[W]rath.exe' >/dev/null"; then
   echo "Wrath is running, close it before installing"; exit 1
@@ -43,6 +52,8 @@ fi
 
 ssh "$DECK" "rm -f '$MOD_DIR'/*.cache '$MOD_DIR'/*.cache.pdb"
 scp -q "$OUT/BuffIt2TheLimit.dll" "$OUT/Info.json" "$DECK:$MOD_DIR/"
+[ "$(md5 -q "$OUT/BuffIt2TheLimit.dll")" = "$(ssh "$DECK" "md5sum '$MOD_DIR/BuffIt2TheLimit.dll'" | cut -d' ' -f1)" ] \
+  || { echo "checksum mismatch after copy"; exit 1; }
 echo "installed to $DECK:$MOD_DIR"
 
 if [ "$BIND" = 1 ]; then
