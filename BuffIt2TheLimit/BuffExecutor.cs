@@ -39,6 +39,8 @@ namespace BuffIt2TheLimit {
 
         // Shortcut capture state
         public static bool CapturingActive = false;
+        private static bool padDiagLogged;
+        private static int padKeysLogged;
         public static Action<ShortcutBinding> OnShortcutCaptured = null;
 
         // Cached enum arrays to avoid per-frame allocation in Update()
@@ -129,9 +131,22 @@ namespace BuffIt2TheLimit {
                     }
 
                     // Handle open-buff-menu shortcut
-                    if (state.GetOpenBuffMenuShortcut().IsPressed()) {
-                        instance?.OpenBuffMenu();
+                    if (!padDiagLogged) {
+                        padDiagLogged = true;
+                        Main.Log($"[PAD] controller alive, gamepad={Game.Instance.IsControllerGamepad}, menu key={state.GetOpenBuffMenuShortcut().ToDisplayString()}");
                     }
+                    if (Input.anyKeyDown && padKeysLogged < 300) {
+                        foreach (KeyCode kc in BindableKeys) {
+                            if (Input.GetKeyDown(kc)) {
+                                padKeysLogged++;
+                                Main.Log($"[PAD] key down: {kc}");
+                            }
+                        }
+                    }
+                    if (Game.Instance.IsControllerGamepad)
+                        PadGestures.Tick(state.GetOpenBuffMenuShortcut());
+                    else if (state.GetOpenBuffMenuShortcut().IsPressed())
+                        instance?.OpenBuffMenu();
                 }
             }
         }
@@ -171,6 +186,12 @@ namespace BuffIt2TheLimit {
         // Read by ArcaneSpellFailurePatch to gate the ASF bypass.
         public static int ArmorBypassActive;
 
+        // Incremented every time Execute actually queues a routine; lets callers detect
+        // that Execute bailed out early (combat lock, double-press guard).
+        internal static int ScheduledRoutines;
+        internal static int FinishedRoutines;
+        internal static event Action<string, int, int, int, TooltipTemplateBuffer> RoutineFinished;
+
         public static IEnumerator WithArmorBypass(IEnumerator inner) {
             ArmorBypassActive++;
             try {
@@ -201,6 +222,14 @@ namespace BuffIt2TheLimit {
             }
 
             int applied = tasks.Count(t => t.ActuallyFired);
+            try {
+                FinishedRoutines++;
+                Main.Log($"[PAD] routine finished: {title} applied {applied}/{attempted}, skipped {skipped}");
+                RoutineFinished?.Invoke(title, applied, attempted, skipped, tooltip);
+                PadToast.ShowResult(title, applied, attempted, skipped, tooltip);
+            } catch (Exception ex) {
+                Main.Error(ex, "RoutineFinished");
+            }
             var messageString = $"{title} {"log.applied".i8()} {applied}/{attempted} ({"log.skipped".i8()} {skipped})";
             Main.Verbose(messageString);
 
@@ -785,6 +814,7 @@ namespace BuffIt2TheLimit {
 
             bool armorBypass = State.BypassArcaneSpellFailure && !Game.Instance.Player.IsInCombat;
             string title = buffGroup.i8();
+            ScheduledRoutines++;
             BubbleBuffGlobalController.Instance.CastSpellsAndLog(tasks, armorBypass, title, attemptedCasts, skippedCasts, tooltip);
         }
 

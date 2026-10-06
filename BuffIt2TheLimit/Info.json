@@ -1,7 +1,7 @@
 {
     "AssemblyName": "BuffIt2TheLimit.dll",
     "Author": "Gh05d",
-    "DisplayName": "Buff It 2 The Limit",
+    "DisplayName": "Buff It 2 The Limit (Pad)",
     "EntryMethod": "BuffIt2TheLimit.Main.Load",
     "GameVersion": "1.4.0",
     "HomePage": "https://www.nexusmods.com/pathfinderwrathoftherighteous/mods/948",

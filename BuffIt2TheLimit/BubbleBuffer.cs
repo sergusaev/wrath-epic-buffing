@@ -243,6 +243,8 @@ namespace BuffIt2TheLimit {
         }
 
         private void Awake() {
+            if (UIHelpers.SpellbookScreen == null || gameObject != UIHelpers.SpellbookScreen.gameObject)
+                return;
             TryFixEILayout();
 
             MainContainer = transform.Find("MainContainer").gameObject;
@@ -3008,6 +3010,7 @@ namespace BuffIt2TheLimit {
         private List<BuffResult> good = new();
         private List<BuffResult> bad = new();
         private List<BuffResult> skipped = new();
+        internal IReadOnlyList<BuffResult> Bad => bad;
 
         public BuffResult AddBad(BubbleBuff buff) {
             BuffResult result = new(buff);

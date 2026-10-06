@@ -37,6 +37,8 @@ namespace BuffIt2TheLimit {
         private HashSet<Guid> SelfGatedBuffs;
         public PetType? PetType = null;
 
+        internal IEnumerable<Guid> OwnBuffGuids => AppliedBuffs ?? Enumerable.Empty<Guid>();
+
         public IEnumerable<(string name, Guid guid)> All {
             get {
                 IEnumerable<Guid> some = Enumerable.Empty<Guid>();

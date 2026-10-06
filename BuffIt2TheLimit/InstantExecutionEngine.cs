@@ -46,14 +46,14 @@ namespace BuffIt2TheLimit {
                         Cast(task, handlers);
                     });
 
-                    yield return new WaitForSeconds(DELAY);
+                    yield return new WaitForSecondsRealtime(DELAY);
                 }
 
                 // Batches with retentions
                 foreach (var task in tasks_WithRetentions) {
                     Cast(task, handlers);
 
-                    yield return new WaitForSeconds(DELAY);
+                    yield return new WaitForSecondsRealtime(DELAY);
                 }
 
                 // Grace period: give in-flight AbilityExecutionProcesses a moment to end
