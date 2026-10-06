@@ -221,7 +221,7 @@ namespace BuffIt2TheLimit {
         internal void OpenBuffMenu() => PadQuickMenu.Toggle();
     }
 
-    internal class KmEventWatcher : ISceneHandler, IPartyChangedUIHandler, IPartyCombatHandler, ILevelUpCompleteUIHandler {
+    internal class KmEventWatcher : ISceneHandler, IPartyChangedUIHandler, IPartyCombatHandler, ILevelUpCompleteUIHandler, ISpellBookUIHandler {
         private static void Revalidate() {
             Main.Safely(() => GlobalBubbleBuffer.Instance?.SpellbookController?.RevalidateSpells());
         }
@@ -234,6 +234,10 @@ namespace BuffIt2TheLimit {
         public void OnAreaBeginUnloading() { }
 
         public void HandlePartyChanged() => Revalidate();
+
+        public void HandleMemorizedSpell(Kingmaker.UnitLogic.Abilities.AbilityData data, Kingmaker.UnitLogic.UnitDescriptor owner) => Revalidate();
+
+        public void HandleForgetSpell(Kingmaker.UnitLogic.Abilities.AbilityData data, Kingmaker.UnitLogic.UnitDescriptor owner) => Revalidate();
 
         public void HandleLevelUpComplete(Kingmaker.EntitySystem.Entities.UnitEntityData unit, bool isChargen) => Revalidate();
 

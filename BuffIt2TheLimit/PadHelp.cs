@@ -126,6 +126,11 @@ namespace BuffIt2TheLimit {
 #if KINGMAKER
             body += "\n\n" + "pad.help.km".i8();
 #endif
+            var source = "pad.help.src".i8();
+#if !KINGMAKER
+            source += "\n" + "pad.help.src.items".i8();
+#endif
+            body = body.Replace("##SRC##", source + "\n" + "pad.help.src.end".i8());
             var sb = new StringBuilder();
             foreach (var raw in body.Split('\n')) {
                 var line = Bold.Replace(raw.TrimEnd('\r'), "<b>$1</b>");

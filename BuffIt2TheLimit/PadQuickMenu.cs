@@ -87,7 +87,6 @@ namespace BuffIt2TheLimit {
 
         // members
         private GameObject membersRoot;
-        private TextMeshProUGUI membersTabText;
         private readonly List<ListRow> memberRows = new();
         private TextMeshProUGUI membersDetail;
         private TextMeshProUGUI membersNote;
@@ -490,7 +489,6 @@ namespace BuffIt2TheLimit {
                 case Page.Groups:
                     if (delta > 0) DeleteGroup();
                     break;
-                case Page.Members: SwitchMemberGroup(delta); break;
                 case Page.Name: CycleDuration(delta); break;
                 case Page.Editor: SwitchTab(delta); break;
                 case Page.Help: JumpSection(delta); break;
@@ -557,7 +555,7 @@ namespace BuffIt2TheLimit {
             titleText.text = page switch {
                 Page.Main => "pad.title".i8(),
                 Page.Groups => "pad.groups.title".i8(),
-                Page.Members => "pad.members.title".i8(),
+                Page.Members => string.Format("pad.members.title".i8(), PadGroups.Name(memberGroup)),
                 Page.Name => nameTarget == null ? "pad.name.title.new".i8() : "pad.name.title.rename".i8(),
                 Page.Editor => "pad.editor.title".i8(),
                 _ => "pad.help.title".i8()
@@ -861,14 +859,6 @@ namespace BuffIt2TheLimit {
                 RebuildMembers(keep);
         }
 
-        private void SwitchMemberGroup(int delta) {
-            var all = PadGroups.All();
-            int idx = all.IndexOf(memberGroup);
-            memberGroup = all[(idx + delta + all.Count) % all.Count];
-            membersNote.text = "";
-            RebuildMembers(null);
-        }
-
         // Members first, then the rest: buffs of the group's duration before the others.
         private void RebuildMembers(BubbleBuff keep) {
             Bubble.RefreshGroup();
@@ -896,12 +886,6 @@ namespace BuffIt2TheLimit {
         }
 
         private void RenderMembers() {
-            var all = PadGroups.All();
-            int idx = all.IndexOf(memberGroup);
-            string prev = all.Count > 1 ? PadGroups.Name(all[(idx - 1 + all.Count) % all.Count]) : "";
-            string next = all.Count > 1 ? PadGroups.Name(all[(idx + 1) % all.Count]) : "";
-            membersTabText.text = $"<color=#8A847A>{Trim(prev, 22)}</color>    <color=#E8C46A><b>{PadGroups.Name(memberGroup)}</b></color>    <color=#8A847A>{Trim(next, 22)}</color>";
-
             if (memberCursor < memberTop)
                 memberTop = memberCursor;
             if (memberCursor >= memberTop + MemberRows)
@@ -1517,11 +1501,6 @@ namespace BuffIt2TheLimit {
 
             // members
             menu.membersRoot = MakeContainer(root.transform, "Members", 5);
-            var memberTabs = MakeHorizontal(menu.membersRoot.transform, "Tabs", 14, TextAnchor.MiddleLeft);
-            MakeIcon(memberTabs.transform, font, RewiredActionType.LeftUp, 32);
-            menu.membersTabText = MakeText(memberTabs.transform, font, "", 21, FontStyles.Normal, TextColor);
-            menu.membersTabText.enableWordWrapping = false;
-            MakeIcon(memberTabs.transform, font, RewiredActionType.RightUp, 32);
             for (int r = 0; r < MemberRows; r++)
                 menu.memberRows.Add(MakeListRow(menu.membersRoot.transform, font, 20, withBox: true));
             menu.membersDetail = MakeText(menu.membersRoot.transform, font, "", 19, FontStyles.Normal, DimColor);
@@ -1532,7 +1511,6 @@ namespace BuffIt2TheLimit {
                 (new[] { RewiredActionType.Func01 }, "pad.h.tick"),
                 (new[] { RewiredActionType.Func02 }, "pad.h.fill"),
                 (new[] { RewiredActionType.DPadRight }, "pad.h.targets"),
-                (new[] { RewiredActionType.LeftUp, RewiredActionType.RightUp }, "pad.h.group"),
                 (new[] { RewiredActionType.Decline }, "pad.h.back"));
             menu.membersRoot.SetActive(false);
 
