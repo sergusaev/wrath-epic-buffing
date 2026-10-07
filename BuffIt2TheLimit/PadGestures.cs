@@ -101,12 +101,8 @@ namespace BuffIt2TheLimit {
             }
         }
 
+        // Shown for casts from the open menu too: the toast sits at the top edge, the menu above it in the middle.
         public static void ShowResult(string title, int applied, int attempted, int skipped, TooltipTemplateBuffer tooltip) {
-            if (PadQuickMenu.IsOpen) {
-                if (instance != null)
-                    instance.gameObject.SetActive(false);
-                return;
-            }
             var lines = new List<string> { string.Format("pad.result".i8(), title, applied, attempted, skipped) };
             foreach (var bad in tooltip.Bad.Take(4)) {
                 var reasons = string.Join("; ", bad.messages.Select(m => m.Trim()).Take(1));

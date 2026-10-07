@@ -176,11 +176,11 @@ namespace BuffIt2TheLimit {
         // casting coroutine completes, using the actual fired-cast count rather than
         // the queue size. Avoids overstating success when commands get dropped (e.g.
         // animation-speed mods truncate UnitCommands before RuleCastSpell triggers).
-        internal void CastSpellsAndLog(List<CastTask> tasks, bool armorBypass, string title, int attempted, int skipped, TooltipTemplateBuffer tooltip) {
+        internal void CastSpellsAndLog(List<CastTask> tasks, bool armorBypass, string title, int attempted, int skipped, TooltipTemplateBuffer tooltip, int activated = 0) {
             IEnumerator castingCoroutine = Engine.CreateSpellCastRoutine(tasks);
             if (armorBypass)
                 castingCoroutine = BuffExecutor.WithArmorBypass(castingCoroutine);
-            StartCoroutine(BuffExecutor.WithDeferredLog(castingCoroutine, tasks, title, attempted, skipped, tooltip));
+            StartCoroutine(BuffExecutor.WithDeferredLog(castingCoroutine, tasks, title, attempted, skipped, tooltip, activated));
         }
 
 #if KINGMAKER
@@ -223,7 +223,8 @@ namespace BuffIt2TheLimit {
         // message with `applied = tasks where ActuallyFired` instead of the queue
         // size. The flag is set in EngineCastingHandler when RuleCastSpell actually
         // fires, so dropped commands no longer inflate the reported count.
-        internal static IEnumerator WithDeferredLog(IEnumerator inner, List<CastTask> tasks, string title, int attempted, int skipped, TooltipTemplateBuffer tooltip) {
+        // `activated` counts activatables switched on before the casts; they have no cast task.
+        internal static IEnumerator WithDeferredLog(IEnumerator inner, List<CastTask> tasks, string title, int attempted, int skipped, TooltipTemplateBuffer tooltip, int activated = 0) {
             try {
                 while (inner.MoveNext()) {
                     yield return inner.Current;
@@ -234,7 +235,7 @@ namespace BuffIt2TheLimit {
                 (inner as IDisposable)?.Dispose();
             }
 
-            int applied = tasks.Count(t => t.ActuallyFired);
+            int applied = tasks.Count(t => t.ActuallyFired) + activated;
             try {
                 FinishedRoutines++;
                 Main.Log($"[PAD] routine finished: {title} applied {applied}/{attempted}, skipped {skipped}");
@@ -246,7 +247,14 @@ namespace BuffIt2TheLimit {
             var messageString = $"{title} {"log.applied".i8()} {applied}/{attempted} ({"log.skipped".i8()} {skipped})";
             Main.Verbose(messageString);
 
-#if !KINGMAKER
+#if KINGMAKER
+            try {
+                // Same wording as the menu and the pop-up.
+                KmCombatLog.Add(string.Format("pad.result".i8(), title, applied, attempted, skipped), tooltip);
+            } catch (Exception ex) {
+                Main.Error(ex, "Emitting combat log message");
+            }
+#else
             try {
                 var message = new CombatLogMessage(messageString, Color.blue, PrefixIcon.RightArrow, tooltip, true);
                 var messageLog = LogThreadService.Instance.m_Logs[LogChannelType.Common].First(x => x is MessageLogThread);
@@ -531,6 +539,12 @@ namespace BuffIt2TheLimit {
             //   0: normal activatables (Rage, Bardic Performance, …)
             //   1: Pattern-B parents with sub-selections (Chimeric Aspect — activates the form)
             //   2: Shifter's Fury (needs AppliedFacts from the form to exist first)
+            // Activatables count in the routine result like casts: switched on = applied, already on = already active.
+            int activationAttempts = 0, activated = 0;
+            // Toggles found on during Recalculate never reach the activation queue.
+            int alreadyOn = State.BuffList
+                .Where(b => b.IsActivatable && b.ActiveIn(buffGroup))
+                .Sum(b => b.AlreadyOnQueue?.Count ?? 0);
             foreach (var actBuff in State.BuffList
                 .Where(b => b.IsActivatable && b.ActiveIn(buffGroup) && b.Fulfilled > 0)
                 .Reverse()
@@ -549,8 +563,10 @@ namespace BuffIt2TheLimit {
 
                         if (IsEffectivelyOn(caster, activatable)) {
                             Main.Verbose($"Activatable {actBuff.Name}: already active on {caster.CharacterName}, skipping");
+                            alreadyOn++;
                             continue;
                         }
+                        activationAttempts++;
 
                         var group = activatable.Blueprint.Group;
                         // Per-group cap is dynamic: features like Aeon's mythic gaze (Lv6/Lv10) or
@@ -582,6 +598,7 @@ namespace BuffIt2TheLimit {
                         if (mountResult != MountResult.NotTargeted) {
                             switch (mountResult) {
                                 case MountResult.Mounted:
+                                    activated++;
                                     Main.Verbose($"Activatable {actBuff.Name}: mounted {caster.CharacterName} on {mount.CharacterName}");
                                     if (actBuff.DeactivateAfterRounds > 0)
                                         GlobalBubbleBuffer.RoundLimitWatcher?.TrackActivation(caster, activatable.Blueprint.Gid());
@@ -601,6 +618,8 @@ namespace BuffIt2TheLimit {
                         target.IsOn = true;
                         if (!IsRunning(target))
                             target.TryStart();
+                        if (target.IsOn)
+                            activated++;
                         if (actBuff.DeactivateAfterRounds > 0)
                             GlobalBubbleBuffer.RoundLimitWatcher?.TrackActivation(caster, activatable.Blueprint.Gid());
                     } catch (Exception ex) {
@@ -874,9 +893,15 @@ namespace BuffIt2TheLimit {
             }
 
             bool armorBypass = State.BypassArcaneSpellFailure && !Game.Instance.Player.IsInCombat;
-            string title = buffGroup.i8();
+#if KINGMAKER
+            string title = PadGroups.Name(buffGroup);
+#else
+            // The pad menu names groups by duration; the PC spellbook keeps the original names.
+            string title = Game.Instance.IsControllerGamepad ? PadGroups.Name(buffGroup) : buffGroup.i8();
+#endif
             ScheduledRoutines++;
-            BubbleBuffGlobalController.Instance.CastSpellsAndLog(tasks, armorBypass, title, attemptedCasts, skippedCasts, tooltip);
+            BubbleBuffGlobalController.Instance.CastSpellsAndLog(tasks, armorBypass, title,
+                attemptedCasts + activationAttempts, skippedCasts + alreadyOn, tooltip, activated);
         }
 
         public void ExecuteCombatStart() {

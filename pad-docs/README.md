@@ -28,7 +28,7 @@ A gamepad has no F keys, so bind the key to a free button in Steam Input. On the
 | hold for 0.6 s | apply the built-in Long group ("10 min/level and longer") |
 | double press | apply the built-in Important group ("Rounds") |
 
-When the menu is closed, the result of a cast pops up at the top of the screen for 5 s, with the reasons of failures.
+The result of every cast, from a gesture or from the menu, pops up at the top of the screen for 5 s with the reasons of failures, and goes to the game's combat log. Activatables count like casts: switched on = applied, already on = already active.
 
 Why the gestures are not done in Steam Input: with a Long Press binding Steam also sends the regular press key, and a Double Press never reached the game. Avoid key chords with Shift: on a short tap Steam Input does not deliver a key with a start delay, only the Shift arrives.
 
@@ -130,7 +130,7 @@ The same menu (groups, checkboxes, automatic targets, help, gestures) is built f
 | Casting | `KmExecutionEngine`: target check → `RuleCastSpell` → the slot is spent right after the rule (Kingmaker has no "before trigger" hook). The slot is spent even if the spell fails, as in the game |
 | Not in the game | Shifter's Fury, mounts, Arcanist (reservoir, Share Transmutation), Magic Deceiver, Azata Zippy Magic, mythic levels, Extend rods |
 | Pets | one pet per unit (`Descriptor.Pet`), no reserve party |
-| Combat log | the result is shown only in the menu and in the pop-up |
+| Combat log | the result is written by the mod itself (`KmCombatLog`): the console log in gamepad mode, the PC log in mouse mode |
 
 **Where the code differs**
 

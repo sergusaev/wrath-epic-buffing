@@ -91,6 +91,29 @@ namespace BuffIt2TheLimit {
         }
     }
 
+    // Routine results go to the game's combat log, as in WotR: the console log in gamepad mode, the PC log otherwise.
+    static class KmCombatLog {
+        internal static void Add(string message, TooltipTemplateBuffer tooltip) {
+            var color = Kingmaker.Blueprints.Root.Strings.GameLog.GameLogStrings.Instance.DefaultColor;
+            string details = tooltip.Bad.Count == 0 ? null : string.Join("\n", tooltip.Bad
+                .Select(b => b.buff.Name + ": " + string.Join("; ", b.messages.Select(m => m.Trim()))).ToArray());
+            if (Game.Instance.IsControllerGamepad)
+                ConsoleLogCapture.Instance?.LogListModel?.AddLogEntry(message, color, details);
+            else
+                Game.Instance.UI.BattleLogManager?.LogView?.AddLogEntry(message, color, details);
+        }
+    }
+
+    // The console combat log has no static accessor; keep the view model the game creates for each session.
+    [HarmonyPatch(typeof(Kingmaker.UI._ConsoleUI.CombatLog.CombatLogVM), MethodType.Constructor)]
+    static class ConsoleLogCapture {
+        internal static Kingmaker.UI._ConsoleUI.CombatLog.CombatLogVM Instance;
+
+        static void Postfix(Kingmaker.UI._ConsoleUI.CombatLog.CombatLogVM __instance) {
+            Instance = __instance;
+        }
+    }
+
     // Results of one cast routine; in WotR the same class is also the combat-log tooltip.
     class TooltipTemplateBuffer {
         public class BuffResult {
