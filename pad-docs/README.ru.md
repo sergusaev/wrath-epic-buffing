@@ -161,9 +161,49 @@ F-клавиш на геймпаде нет, поэтому клавишу на�
 
 ## Сборка
 
-- .NET SDK 8 (`dotnet`).
-- Сборки игры: `GamePath.props` указывает на папку игры, по умолчанию `GameInstall/` для WotR и `GameInstallKM/` для Kingmaker в корне репозитория (обе вне git). Туда нужно скопировать как минимум `Wrath_Data/Managed` / `Kingmaker_Data/Managed`.
-- Собирать Release: в Debug включены отладочные клавиши Shift+I/B/R.
+### Сторонние программы
+
+| Программа | Зачем | macOS | Linux | Windows |
+|---|---|---|---|---|
+| .NET SDK 8 или новее | сборка обоих проектов | `curl -sSL https://dot.net/v1/dotnet-install.sh \| bash -s -- --channel 8.0` (в `~/.dotnet`) или `brew install --cask dotnet-sdk` | тот же скрипт или пакет дистрибутива `dotnet-sdk-8.0` | `winget install Microsoft.DotNet.SDK.8` |
+| Bash, `ssh`, `md5sum`/`md5` | `deploy.sh`, `release.sh` | встроены | встроены | Git for Windows: `winget install Git.Git`, скрипты запускать из **Git Bash** |
+| `zip` или bsdtar | упаковка zip для релиза | встроен (`tar`) | `sudo apt install zip` | `C:\Windows\System32\tar.exe`, используется сам |
+| GitHub CLI `gh` | только `release.sh --publish` | `brew install gh` | [cli.github.com](https://cli.github.com/) | `winget install GitHub.cli` |
+
+`deploy.sh` и `release.sh` берут `dotnet` из `PATH`, затем из `~/.dotnet`; переопределяется `DOTNET=/путь/к/dotnet`. После установки `gh` один раз войти: `gh auth login`.
+
+**Пакеты NuGet** `dotnet build` скачивает сам при первой сборке (нужен интернет): `Microsoft.NETFramework.ReferenceAssemblies` 1.0.3 (эталонные сборки .NET Framework 4.8 / 4.8.1, поэтому targeting pack Windows не нужен) и `BepInEx.AssemblyPublicizer.MSBuild` 0.4.2 (открывает приватные члены игры при компиляции).
+
+**Сборки игры** (вне git, никогда не публиковать):
+
+| Проект | Папка | Что туда скопировать |
+|---|---|---|
+| WotR | `GameInstall/Wrath_Data/Managed/` | все DLL из `<WotR>/Wrath_Data/Managed` и `UnityModManager/` с `UnityModManager.dll` и `0Harmony.dll` |
+| Kingmaker | `GameInstallKM/Kingmaker_Data/Managed/` | все DLL из `<Kingmaker>/Kingmaker_Data/Managed` и `UnityModManager/` с `UnityModManager.dll` и `0Harmony.dll` |
+
+Например, со Steam Deck:
+
+```bash
+mkdir -p GameInstall/Wrath_Data GameInstallKM/Kingmaker_Data
+scp -r "deck@steamdeck.local:/home/deck/.local/share/Steam/steamapps/common/Pathfinder Second Adventure/Wrath_Data/Managed" GameInstall/Wrath_Data/
+scp -r "deck@steamdeck.local:/home/deck/.local/share/Steam/steamapps/common/Pathfinder Kingmaker/Kingmaker_Data/Managed" GameInstallKM/Kingmaker_Data/
+```
+
+`GamePath.props` в корне репозитория говорит проекту WotR, где игра. На Windows с установленной WotR первая сборка пишет его сама по `Player.log` игры; в остальных случаях создать вручную (с абсолютным путём):
+
+```xml
+<Project xmlns='http://schemas.microsoft.com/developer/msbuild/2003'>
+	<PropertyGroup>
+		<WrathInstallDir>/абсолютный/путь/к/wotr-pad-buffs/GameInstall</WrathInstallDir>
+	</PropertyGroup>
+</Project>
+```
+
+Проект Kingmaker берёт `GameInstallKM/`, если в `GamePath.props` не задан `KingmakerInstallDir`. После удачной сборки WotR проект ещё копирует мод в `$(WrathInstallDir)/Mods/` — с `GameInstall/` это безвредно.
+
+### Команды
+
+Собирать Release: в Debug включены отладочные клавиши Shift+I/B/R.
 
 ```bash
 dotnet build BuffIt2TheLimit/BuffIt2TheLimit.csproj -c Release -p:SolutionDir=$(pwd)/
