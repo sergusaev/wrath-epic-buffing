@@ -214,6 +214,47 @@ namespace BuffIt2TheLimit {
             }
         }
 
+        private static string ResourceLeft(UnitEntityData unit, ActivatableAbility ability) {
+            try {
+                var resource = ability.Blueprint.GetComponent<ActivatableAbilityResourceLogic>()?.RequiredResource;
+                return resource == null ? "" : $", {resource.name} left {unit.Descriptor.Resources.GetResourceAmount(resource)}";
+            } catch (Exception) {
+                return "";
+            }
+        }
+
+        // One line per cast after the routine: who, on whom, what from which source, and what is left of that source.
+        private static void LogCast(CastTask task) {
+            try {
+                string target = task.Target?.Unit?.CharacterName ?? "<point>";
+                string spell = task.SpellToCast?.Name ?? "?";
+                string metamagic = task.SpellToCast?.MetamagicData != null && task.SpellToCast.MetamagicData.MetamagicMask != 0
+                    ? $" [{task.SpellToCast.MetamagicData.MetamagicMask}]" : "";
+                string rod = task.MetamagicRodItem != null ? $", rod {task.MetamagicRodItem.Name} (charges left {task.MetamagicRodItem.Charges})" : "";
+                Main.Log($"[PAD] cast {(task.ActuallyFired ? "done" : "NOT DONE")}: {task.Caster?.CharacterName} -> {target}: {spell}{metamagic}; {DescribeSource(task)}{rod}");
+            } catch (Exception ex) {
+                Main.Log($"[PAD] cast log failed: {ex.Message}");
+            }
+        }
+
+        private static string DescribeSource(CastTask task) {
+            var item = task.SourceItem;
+            if (task.SourceType != BuffSourceType.Spell || item != null) {
+                string what = task.SourceType.ToString().ToLowerInvariant();
+                return item == null ? what : $"{what} {item.Name}, left: {item.Count} pcs, {item.Charges} charges";
+            }
+            var slotted = task.SlottedSpell ?? task.SpellToCast;
+            var book = slotted?.Spellbook;
+            if (book == null)
+                return "ability (no spellbook)";
+            int level = book.GetSpellLevel(slotted);
+            string kind = book.Blueprint.Spontaneous ? "spontaneous" : "prepared";
+            string left = level == 0 ? "cantrip, no slot used"
+                : book.Blueprint.Spontaneous ? $"level {level} slots left {book.GetSpontaneousSlots(level)}"
+                : $"level {level} prepared copies left {book.GetMemorizedSpells(level).Count(s => s.Spell != null && s.Available)}";
+            return $"spell from {book.Blueprint.name} ({kind}, caster level {book.CasterLevel}), {left}";
+        }
+
         // Walks the casting coroutine to completion, then emits the combat-log
         // message with `applied = tasks where ActuallyFired` instead of the queue
         // size. The flag is set in EngineCastingHandler when RuleCastSpell actually
@@ -231,6 +272,8 @@ namespace BuffIt2TheLimit {
             }
 
             int applied = tasks.Count(t => t.ActuallyFired) + activated;
+            foreach (var task in tasks)
+                LogCast(task);
             Main.Log($"[PAD] {title} casts: fired {applied - activated} of {tasks.Count} queued");
             try {
                 FinishedRoutines++;
@@ -614,9 +657,10 @@ namespace BuffIt2TheLimit {
                         target.IsOn = true;
                         if (!IsRunning(target))
                             target.TryStart();
-                        if (target.IsOn)
+                        if (target.IsOn) {
                             activated++;
-                        else
+                            Main.Log($"[PAD] toggle on: {actBuff.Name} by {caster.CharacterName}{ResourceLeft(caster, activatable)}");
+                        } else
                             Main.Log($"[PAD] toggle {actBuff.Name}: did not switch on for {caster.CharacterName}");
                         if (actBuff.DeactivateAfterRounds > 0)
                             GlobalBubbleBuffer.RoundLimitWatcher?.TrackActivation(caster, activatable.Blueprint.Gid());

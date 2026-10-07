@@ -24,6 +24,11 @@ namespace BuffIt2TheLimit {
     internal class PadBarView : MonoBehaviour {
 
         private const float ButtonSize = 48f;
+        // TBM_backButton at half size: its top 4.5 units are empty, so the bar goes that much down onto the game's sheet;
+        // the inner edge of its right side is 17.5 units in. Its left end needs only its small ornament, 64 px.
+        private const float FrameSink = 4.5f;
+        private const int FrameRight = 18;
+        private const float FrameLeftBorder = 64f;
         private const float Margin = 8f;
         // Fallback when the game's menu buttons are not found: above two rows of 48px buttons.
         private static readonly Vector2 FallbackPos = new(12f, 132f);
@@ -91,7 +96,7 @@ namespace BuffIt2TheLimit {
             MakeFrame(row);
             // The grid of the game's menu buttons: 48 px cells 1 px apart, the frame's ornament above and to the right.
             var layout = rowGo.AddComponent<HorizontalLayoutGroup>();
-            layout.padding = new RectOffset(2, 20, 18, 2);
+            layout.padding = new RectOffset(2, FrameRight, 18, 0);
             layout.spacing = 1;
             layout.childControlWidth = false;
             layout.childControlHeight = false;
@@ -151,10 +156,10 @@ namespace BuffIt2TheLimit {
                 try {
                     var border = plate.border;
                     image.sprite = Sprite.Create(plate.texture, plate.textureRect, new Vector2(0.5f, 0.5f), plate.pixelsPerUnit, 0,
-                        SpriteMeshType.FullRect, new Vector4(border.x, 0, border.z, border.w));
+                        SpriteMeshType.FullRect, new Vector4(FrameLeftBorder, 0, border.z, border.w));
                     image.type = Image.Type.Tiled;
                     // Not narrower than its two ornamented ends (canvas units at 100 pixels per unit).
-                    (parent.GetComponent<LayoutElement>() ?? parent.gameObject.AddComponent<LayoutElement>()).minWidth = (border.x + border.z) * 100f / plate.pixelsPerUnit;
+                    (parent.GetComponent<LayoutElement>() ?? parent.gameObject.AddComponent<LayoutElement>()).minWidth = (FrameLeftBorder + border.z) * 100f / plate.pixelsPerUnit;
                 } catch (Exception) {
                     image.sprite = null;
                 }
@@ -415,7 +420,7 @@ namespace BuffIt2TheLimit {
                 return FallbackPos;
             // Right on top of the game's sheet, from the screen edge as the sheet is.
             var pos = local - root.rect.min;
-            return new Vector2(Mathf.Max(pos.x, 0f), pos.y);
+            return new Vector2(Mathf.Max(pos.x, 0f), pos.y - FrameSink);
         }
 
         // The icons are embedded in the DLL, so the release zip stays a DLL and Info.json.
