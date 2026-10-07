@@ -83,6 +83,8 @@ namespace BuffIt2TheLimit {
         public static Color Row => Paper ? new Color(0.36f, 0.22f, 0.1f, 0.07f) : new Color(1f, 1f, 1f, 0.04f);
         public static Color RowOutside => Paper ? new Color(0.36f, 0.22f, 0.1f, 0.025f) : new Color(1f, 1f, 1f, 0.015f);
         public static Color RowSelected => Paper ? new Color(0.55f, 0.3f, 0.1f, 0.3f) : new Color(0.62f, 0.47f, 0.2f, 0.55f);
+        // Under the mouse pointer, laid over the row's own colour.
+        public static Color RowHover => Paper ? new Color(0.55f, 0.3f, 0.1f, 0.14f) : new Color(0.93f, 0.8f, 0.5f, 0.14f);
         public static Color Chip => Paper ? new Color(0.36f, 0.22f, 0.1f, 0.1f) : new Color(1f, 1f, 1f, 0.06f);
         public static Color ChipWanted => Paper ? new Color(0.3f, 0.5f, 0.2f, 0.45f) : new Color(0.3f, 0.55f, 0.28f, 0.75f);
         public static Color ChipCursor => Paper ? new Color(0.62f, 0.36f, 0.12f, 0.5f) : new Color(0.85f, 0.66f, 0.28f, 0.9f);

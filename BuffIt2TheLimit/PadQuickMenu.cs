@@ -14,6 +14,7 @@ using System.Collections.Generic;
 using System.Linq;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace BuffIt2TheLimit {
@@ -28,6 +29,9 @@ namespace BuffIt2TheLimit {
     // Gamepad buttons go through the game's console input layer (the world and HUD are blocked while
     // the menu is open); directions are polled from the Rewired player for hold-to-repeat.
     // Keyboard keys (PadKeys) are polled; the game's own hotkeys are off while the menu is open.
+    // Mouse: the pointer lights up what it is over. A click selects a row, a second click on the selected row acts as A;
+    // rows that only open a page, keys, party members, tick boxes and values act at once. The wheel scrolls, the right
+    // button goes back, a click on a button hint at the bottom does what the button does.
     internal class PadQuickMenu : MonoBehaviour {
 
         private enum Page { Main, Groups, Members, Name, Editor, Help, Options }
@@ -60,6 +64,7 @@ namespace BuffIt2TheLimit {
         private const float DeleteConfirmTime = 3f;
         private const int OptionRows = 13;
         private const float IconSize = 30f;
+        private const int WheelRows = 3;
         // Characters of a custom group name that fit the name column of the groups page; longer names end in "…".
         private const int CustomNameColumn = 34;
 
@@ -166,6 +171,8 @@ namespace BuffIt2TheLimit {
         private int optCursor;
         private int optTop;
         private bool rebuildRequested;
+        // The wheel moved the list: the cursor is already inside it, RenderOptions keeps the scroll as it is.
+        private bool optScrolled;
         private Action<ShortcutBinding> captureDone;
 
         public static bool Capturing => instance != null && instance.captureDone != null;
@@ -199,6 +206,7 @@ namespace BuffIt2TheLimit {
             // The buff's picture, on buff lists only.
             public Image Icon;
             public TextMeshProUGUI Text;
+            public PadPointer Pointer;
 
             public void SetIcon(Sprite sprite) {
                 if (Icon == null)
@@ -292,6 +300,7 @@ namespace BuffIt2TheLimit {
         private void Update() {
             try {
                 PollButtons();
+                PollMouse();
                 if (captureDone != null) {
                     PollCapture();
                 } else {
@@ -506,6 +515,177 @@ namespace BuffIt2TheLimit {
                     ScrollHelp(first ? -HelpMaxOffset - helpOffset : HelpMaxOffset);
                     break;
             }
+        }
+
+        // ---------- mouse ----------
+
+        // While a key is captured the mouse does nothing but the right button, which leaves the key as it was.
+        private bool MouseBlocked => captureDone != null;
+
+        // On release: the press and the release both land on the menu, so the game never sees half a click.
+        private void PollMouse() {
+            if (Input.GetMouseButtonUp(1))
+                Fire(RewiredActionType.Decline, "mouse");
+        }
+
+        // A click on a button hint or icon does what the button does.
+        private void Press(RewiredActionType button) {
+            if (button == RewiredActionType.DPadRight) {
+                if (!MouseBlocked)
+                    MoveHorizontal(1);
+                return;
+            }
+            Fire(button, "mouse");
+        }
+
+        // The wheel moves the visible part of a list by a few rows and takes the cursor along, so it stays in view.
+        private void OnWheel(float y) {
+            if (MouseBlocked || Mathf.Abs(y) < 0.01f)
+                return;
+            int delta = y > 0 ? -WheelRows : WheelRows;
+            switch (page) {
+                case Page.Members: ScrollMembers(delta); break;
+                case Page.Editor: ScrollEditor(delta); break;
+                case Page.Options: ScrollOptions(delta); break;
+                case Page.Help: ScrollHelp(delta * HelpStep); break;
+            }
+            PadPointer.Over?.Refresh();
+        }
+
+        private void ScrollMembers(int delta) {
+            int next = Mathf.Clamp(memberTop + delta, 0, Mathf.Max(0, memberList.Count - MemberRows));
+            if (next == memberTop)
+                return;
+            memberTop = next;
+            memberCursor = Mathf.Clamp(memberCursor, memberTop, Mathf.Min(memberList.Count, memberTop + MemberRows) - 1);
+            RenderMembers();
+        }
+
+        private void ScrollEditor(int delta) {
+            int next = Mathf.Clamp(top + delta, 0, Mathf.Max(0, filtered.Count - VisibleRows));
+            if (next == top)
+                return;
+            top = next;
+            cursor = Mathf.Clamp(cursor, top, Mathf.Min(filtered.Count, top + VisibleRows) - 1);
+            RenderEditor();
+        }
+
+        private void ScrollOptions(int delta) {
+            int next = Mathf.Clamp(optTop + delta, 0, Mathf.Max(0, opts.Count - OptionRows));
+            if (next == optTop)
+                return;
+            optTop = next;
+            int last = Mathf.Min(opts.Count, optTop + OptionRows) - 1;
+            if (optCursor < optTop || optCursor > last) {
+                int step = optCursor < optTop ? 1 : -1;
+                for (int at = step > 0 ? optTop : last; at >= optTop && at <= last; at += step) {
+                    if (!opts[at].Header) {
+                        optCursor = at;
+                        break;
+                    }
+                }
+            }
+            optScrolled = true;
+            RenderOptions();
+        }
+
+        // Group rows cast, so the first click only selects them; the other rows open a page or flip a setting at once.
+        private void ClickMain(int i, PointerEventData e) {
+            if (MouseBlocked || i >= MainRowCount)
+                return;
+            bool act = i == selected || i >= mainGroups.Count;
+            selected = i;
+            UpdateMainSelection();
+            if (act)
+                OnConfirm();
+        }
+
+        // The first click selects a group for the hints below (rename, hide, delete), the second opens it.
+        private void ClickGroup(int i, PointerEventData e) {
+            if (MouseBlocked || i >= GroupsRowCount)
+                return;
+            bool act = i == groupsCursor || i >= groupList.Count;
+            groupsCursor = i;
+            RenderGroups();
+            if (act)
+                OnConfirm();
+        }
+
+        // The tick box switches the buff on or off at once; the second click on a row adds or removes the buff.
+        private void ClickMember(int r, PointerEventData e) {
+            int at = memberTop + r;
+            if (MouseBlocked || at >= memberList.Count)
+                return;
+            bool act = at == memberCursor;
+            memberCursor = at;
+            var box = memberRows[r].Box;
+            var hit = e.pointerPressRaycast.gameObject;
+            if (box != null && box.activeSelf && hit != null && hit.transform.IsChildOf(box.transform.parent))
+                ToggleTick();
+            else if (act)
+                ToggleMembership();
+            else
+                RenderMembers();
+        }
+
+        // A row only selects the buff; its targets are switched on the party members below it.
+        private void ClickEditorRow(int r) {
+            int at = top + r;
+            if (MouseBlocked || at >= filtered.Count || at == cursor)
+                return;
+            cursor = at;
+            RenderEditor();
+        }
+
+        private void ClickChip(int i) {
+            if (MouseBlocked || i >= Party.Count)
+                return;
+            partyCol = i;
+            RenderEditor();
+            ToggleTarget();
+        }
+
+        private void ClickTab(PointerEventData e) {
+            if (MouseBlocked)
+                return;
+            int link = TMP_TextUtilities.FindIntersectingLink(tabText, e.position, null);
+            if (link >= 0)
+                SwitchTab(tabText.textInfo.linkInfo[link].GetLinkID() == "prev" ? -1 : 1);
+        }
+
+        // The arrows of a value step it back or forth; a click on the value, or a second click on the row, steps it forth.
+        private void ClickOption(int r, PointerEventData e) {
+            int at = optTop + r;
+            if (MouseBlocked || at >= opts.Count || opts[at].Header)
+                return;
+            var text = optRows[r].Text;
+            int delta = 0;
+            int link = TMP_TextUtilities.FindIntersectingLink(text, e.position, null);
+            if (link >= 0)
+                delta = text.textInfo.linkInfo[link].GetLinkID() == "dec" ? -1 : 1;
+            else if (at == optCursor || OnValue(text, e))
+                delta = 1;
+            optCursor = at;
+            if (delta != 0)
+                ChangeOption(delta);
+            else
+                RenderOptions();
+        }
+
+        // The value column starts at 62% of the row (RenderOptions).
+        private static bool OnValue(TextMeshProUGUI text, PointerEventData e) {
+            var rect = text.rectTransform;
+            return RectTransformUtility.ScreenPointToLocalPointInRectangle(rect, e.position, null, out var local)
+                && local.x >= rect.rect.xMin + rect.rect.width * 0.6f;
+        }
+
+        private void ClickKey(int r, int c) {
+            if (MouseBlocked || r >= keys.Count || c >= keys[r].Count)
+                return;
+            keyRow = r;
+            keyCol = c;
+            RenderKeys();
+            PressKey();
         }
 
         // ---------- key capture ----------
@@ -909,7 +1089,7 @@ namespace BuffIt2TheLimit {
             nextRefresh = Time.unscaledTime + 1f;
             try {
                 mainGroups = PadGroups.Visible();
-                EnsureRows(rows, mainRowHolder, MainRowCount, 22, withBox: false);
+                EnsureRows(rows, mainRowHolder, MainRowCount, 22, withBox: false, ClickMain);
                 selected = Mathf.Clamp(selected, 0, MainRowCount - 1);
                 UpdateMainSelection();
 
@@ -1001,7 +1181,7 @@ namespace BuffIt2TheLimit {
 
         private void RenderGroups() {
             groupList = PadGroups.All();
-            EnsureRows(groupRows, groupsRowHolder, GroupsRowCount, 21, withBox: false);
+            EnsureRows(groupRows, groupsRowHolder, GroupsRowCount, 21, withBox: false, ClickGroup);
             groupsCursor = Mathf.Clamp(groupsCursor, 0, GroupsRowCount - 1);
             // Only custom groups can be deleted, so RB is offered only on them.
             if (groupsDeleteHint != null)
@@ -1244,26 +1424,28 @@ namespace BuffIt2TheLimit {
                 var rowGo = MakeHorizontal(keyHolder, "Keys", 6, TextAnchor.MiddleCenter);
                 var row = new List<(Image, TextMeshProUGUI, string)>();
                 foreach (char c in line)
-                    row.Add(MakeKey(rowGo.transform, c.ToString(), c.ToString(), 58));
+                    row.Add(MakeKey(rowGo.transform, c.ToString(), c.ToString(), 58, keys.Count, row.Count));
                 keys.Add(row);
             }
             var special = MakeHorizontal(keyHolder, "Keys", 6, TextAnchor.MiddleCenter);
+            int last = keys.Count;
             keys.Add(new List<(Image, TextMeshProUGUI, string)> {
-                MakeKey(special.transform, KeySpace, "pad.key.space".i8(), 200),
-                MakeKey(special.transform, KeyShift, "pad.key.shift".i8(), 110),
-                MakeKey(special.transform, KeyLang, latin ? "RU" : "EN", 90),
-                MakeKey(special.transform, KeyErase, "pad.key.erase".i8(), 150),
-                MakeKey(special.transform, KeyDone, "pad.key.done".i8(), 150),
+                MakeKey(special.transform, KeySpace, "pad.key.space".i8(), 200, last, 0),
+                MakeKey(special.transform, KeyShift, "pad.key.shift".i8(), 110, last, 1),
+                MakeKey(special.transform, KeyLang, latin ? "RU" : "EN", 90, last, 2),
+                MakeKey(special.transform, KeyErase, "pad.key.erase".i8(), 150, last, 3),
+                MakeKey(special.transform, KeyDone, "pad.key.done".i8(), 150, last, 4),
             });
             keyRow = Mathf.Clamp(keyRow, 0, keys.Count - 1);
             keyCol = Mathf.Clamp(keyCol, 0, keys[keyRow].Count - 1);
         }
 
-        private (Image, TextMeshProUGUI, string) MakeKey(Transform parent, string key, string label, float width) {
+        private (Image, TextMeshProUGUI, string) MakeKey(Transform parent, string key, string label, float width, int keyRowAt, int keyColAt) {
             var go = new GameObject("Key", typeof(RectTransform));
             go.transform.SetParent(parent, false);
             var bg = go.AddComponent<Image>();
             bg.color = KeyColor;
+            AddPointer(go, tint: true).Click = _ => ClickKey(keyRowAt, keyColAt);
             var element = go.AddComponent<LayoutElement>();
             element.preferredWidth = width;
             element.preferredHeight = 50;
@@ -1505,7 +1687,7 @@ namespace BuffIt2TheLimit {
             var tabs = EditorTabs;
             string prev = EditorTabName(tabs, (tab - 1 + tabs.Count) % tabs.Count);
             string next = EditorTabName(tabs, (tab + 1) % tabs.Count);
-            tabText.text = $"<color={PadTheme.Muted}>{Trim(prev, 22)}</color>    <color={PadTheme.Accent}><b>{EditorTabName(tabs, tab)}</b></color>    <color={PadTheme.Muted}>{Trim(next, 22)}</color>";
+            tabText.text = $"<link=\"prev\"><color={PadTheme.Muted}>{Trim(prev, 22)}</color></link>    <color={PadTheme.Accent}><b>{EditorTabName(tabs, tab)}</b></color>    <link=\"next\"><color={PadTheme.Muted}>{Trim(next, 22)}</color></link>";
 
             if (cursor < top)
                 top = cursor;
@@ -1569,6 +1751,8 @@ namespace BuffIt2TheLimit {
                 var chip = new GameObject("Chip", typeof(RectTransform));
                 chip.transform.SetParent(chipHolder, false);
                 var bg = chip.AddComponent<Image>();
+                int index = chips.Count;
+                AddPointer(chip, tint: true).Click = _ => ClickChip(index);
                 var layout = chip.AddComponent<HorizontalLayoutGroup>();
                 layout.padding = new RectOffset(8, 8, 6, 6);
                 layout.childControlWidth = true;
@@ -1661,13 +1845,16 @@ namespace BuffIt2TheLimit {
         }
 
         private void RenderOptions() {
-            if (optCursor >= 0 && optCursor < optTop)
-                optTop = optCursor;
-            if (optCursor >= optTop + OptionRows)
-                optTop = optCursor - OptionRows + 1;
-            // Keep the heading above the first row in view.
-            if (optTop > 0 && optCursor == optTop && opts[optTop - 1].Header)
-                optTop--;
+            if (!optScrolled) {
+                if (optCursor >= 0 && optCursor < optTop)
+                    optTop = optCursor;
+                if (optCursor >= optTop + OptionRows)
+                    optTop = optCursor - OptionRows + 1;
+                // Keep the heading above the first row in view.
+                if (optTop > 0 && optCursor == optTop && opts[optTop - 1].Header)
+                    optTop--;
+            }
+            optScrolled = false;
             optTop = Mathf.Clamp(optTop, 0, Mathf.Max(0, opts.Count - OptionRows));
             for (int i = 0; i < optRows.Count; i++) {
                 int at = optTop + i;
@@ -1715,7 +1902,7 @@ namespace BuffIt2TheLimit {
         private static Opt Cycle(string id, string label, Func<string> value, Action<int> change, string note = null) => new() {
             Id = id,
             Label = label,
-            Value = () => $"<color={PadTheme.Heading}>‹</color> {value()} <color={PadTheme.Heading}>›</color>",
+            Value = () => $"<link=\"dec\"><color={PadTheme.Heading}>‹</color> </link>{value()}<link=\"inc\"> <color={PadTheme.Heading}>›</color></link>",
             Change = change,
             Note = note
         };
@@ -2064,9 +2251,13 @@ namespace BuffIt2TheLimit {
                 ? $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}"
                 : $"{t.Minutes}:{t.Seconds:00}";
 
-        private void EnsureRows(List<ListRow> list, Transform holder, int count, float size, bool withBox) {
-            while (list.Count < count)
-                list.Add(MakeListRow(holder, font, size, withBox));
+        private void EnsureRows(List<ListRow> list, Transform holder, int count, float size, bool withBox, Action<int, PointerEventData> click) {
+            while (list.Count < count) {
+                int index = list.Count;
+                var row = MakeListRow(holder, font, size, withBox);
+                row.Pointer.Click = e => click(index, e);
+                list.Add(row);
+            }
             while (list.Count > count) {
                 Destroy(list[list.Count - 1].Bg.gameObject);
                 list.RemoveAt(list.Count - 1);
@@ -2090,6 +2281,8 @@ namespace BuffIt2TheLimit {
             scaler.matchWidthOrHeight = 0.5f;
             // Clicks land on the menu instead of the world: the game skips the click when the pointer is over UI.
             overlay.AddComponent<GraphicRaycaster>();
+            // The wheel over the menu scrolls it; Kingmaker does not zoom while the pointer is over something that scrolls.
+            overlay.AddComponent<PadWheel>().Scroll = y => instance?.OnWheel(y);
             var blocker = new GameObject("BI2TL_PadClickBlocker", typeof(RectTransform));
             blocker.transform.SetParent(overlay.transform, false);
             var blockerRect = (RectTransform)blocker.transform;
@@ -2147,8 +2340,13 @@ namespace BuffIt2TheLimit {
 
             // members
             menu.membersRoot = MakeContainer(root.transform, "Members", 5);
-            for (int r = 0; r < MemberRows; r++)
-                menu.memberRows.Add(MakeListRow(menu.membersRoot.transform, font, 20, withBox: true, withIcon: true));
+            for (int r = 0; r < MemberRows; r++) {
+                int at = r;
+                var row = MakeListRow(menu.membersRoot.transform, font, 20, withBox: true, withIcon: true);
+                row.Pointer.Click = e => menu.ClickMember(at, e);
+                row.Pointer.Live = () => menu.memberTop + at < menu.memberList.Count;
+                menu.memberRows.Add(row);
+            }
             menu.membersDetail = MakeText(menu.membersRoot.transform, font, "", 19, FontStyles.Normal, DimColor);
             menu.membersNote = MakeText(menu.membersRoot.transform, font, "", 19, FontStyles.Normal, TitleColor);
             MakeHintBar(menu.membersRoot.transform, font,
@@ -2167,25 +2365,23 @@ namespace BuffIt2TheLimit {
             var durationRow = MakeHorizontal(menu.nameRoot.transform, "Duration", 14, TextAnchor.MiddleLeft);
             bool keyboard = menu.builtForKeyboard;
             // Letters are typed on the name page, so the keyboard changes the duration with PageUp/PageDown.
-            if (keyboard)
-                MakeKeyLabel(durationRow.transform, font, "PgUp");
-            else
-                MakeIcon(durationRow.transform, font, RewiredActionType.LeftUp, 32);
+            Clickable(keyboard
+                ? MakeKeyLabel(durationRow.transform, font, "PgUp")
+                : MakeIcon(durationRow.transform, font, RewiredActionType.LeftUp, 32), RewiredActionType.LeftUp);
             menu.nameDurationText = MakeText(durationRow.transform, font, "", 21, FontStyles.Normal, TextColor);
             menu.nameDurationText.enableWordWrapping = false;
-            if (keyboard)
-                MakeKeyLabel(durationRow.transform, font, "PgDn");
-            else
-                MakeIcon(durationRow.transform, font, RewiredActionType.RightUp, 32);
+            Clickable(keyboard
+                ? MakeKeyLabel(durationRow.transform, font, "PgDn")
+                : MakeIcon(durationRow.transform, font, RewiredActionType.RightUp, 32), RewiredActionType.RightUp);
             menu.keyHolder = MakeContainer(menu.nameRoot.transform, "Keyboard", 6).transform;
             menu.keyHolder.gameObject.SetActive(!keyboard);
             MakeText(menu.nameRoot.transform, font, T(keyboard ? "pad.name.note.kb" : "pad.name.note"), 18, FontStyles.Normal, DimColor);
             if (keyboard) {
                 MakeKeyHintBar(menu.nameRoot.transform, font,
-                    ("Enter", "pad.h.done"),
-                    ("Backspace", "pad.h.erase"),
-                    ("PgUp/PgDn", "pad.h.duration"),
-                    ("Esc", "pad.h.cancel"));
+                    ("Enter", "pad.h.done", m => m.FinishName()),
+                    ("Backspace", "pad.h.erase", m => m.Backspace()),
+                    ("PgUp/PgDn", "pad.h.duration", m => m.CycleDuration(1)),
+                    ("Esc", "pad.h.cancel", m => m.OnDecline()));
             } else {
                 MakeHintBar(menu.nameRoot.transform, font,
                     (new[] { RewiredActionType.DPadVertical, RewiredActionType.DPadHorizontal }, "pad.h.key"),
@@ -2200,12 +2396,18 @@ namespace BuffIt2TheLimit {
             // editor
             menu.editorRoot = MakeContainer(root.transform, "Editor", 6);
             var tabRow = MakeHorizontal(menu.editorRoot.transform, "Tabs", 14, TextAnchor.MiddleLeft);
-            MakeIcon(tabRow.transform, font, RewiredActionType.LeftUp, 32);
+            Clickable(MakeIcon(tabRow.transform, font, RewiredActionType.LeftUp, 32), RewiredActionType.LeftUp);
             menu.tabText = MakeText(tabRow.transform, font, "", 21, FontStyles.Normal, TextColor);
             menu.tabText.enableWordWrapping = false;
-            MakeIcon(tabRow.transform, font, RewiredActionType.RightUp, 32);
-            for (int r = 0; r < VisibleRows; r++)
-                menu.listRows.Add(MakeListRow(menu.editorRoot.transform, font, 21, withBox: false, withIcon: true));
+            AddPointer(menu.tabText.gameObject, tint: false).Click = menu.ClickTab;
+            Clickable(MakeIcon(tabRow.transform, font, RewiredActionType.RightUp, 32), RewiredActionType.RightUp);
+            for (int r = 0; r < VisibleRows; r++) {
+                int at = r;
+                var row = MakeListRow(menu.editorRoot.transform, font, 21, withBox: false, withIcon: true);
+                row.Pointer.Click = _ => menu.ClickEditorRow(at);
+                row.Pointer.Live = () => menu.top + at < menu.filtered.Count;
+                menu.listRows.Add(row);
+            }
             menu.detailText = MakeText(menu.editorRoot.transform, font, "", 19, FontStyles.Normal, DimColor);
             var chipHolder = new GameObject("Party", typeof(RectTransform));
             chipHolder.transform.SetParent(menu.editorRoot.transform, false);
@@ -2264,8 +2466,13 @@ namespace BuffIt2TheLimit {
 
             // options
             menu.optionsRoot = MakeContainer(root.transform, "Options", 5);
-            for (int r = 0; r < OptionRows; r++)
-                menu.optRows.Add(MakeListRow(menu.optionsRoot.transform, font, 20, withBox: false));
+            for (int r = 0; r < OptionRows; r++) {
+                int at = r;
+                var row = MakeListRow(menu.optionsRoot.transform, font, 20, withBox: false);
+                row.Pointer.Click = e => menu.ClickOption(at, e);
+                row.Pointer.Live = () => menu.optTop + at < menu.opts.Count && !menu.opts[menu.optTop + at].Header;
+                menu.optRows.Add(row);
+            }
             menu.optDetail = MakeText(menu.optionsRoot.transform, font, "", 18, FontStyles.Normal, DimColor);
             var optionLayout = menu.optDetail.gameObject.AddComponent<LayoutElement>();
             optionLayout.minHeight = 48;
@@ -2290,10 +2497,15 @@ namespace BuffIt2TheLimit {
             var bar = MakeHorizontal(parent, "Hints", 24, TextAnchor.MiddleCenter);
             foreach (var (buttons, labelKey) in items) {
                 var item = MakeHorizontal(bar.transform, "Hint", 6, TextAnchor.MiddleLeft);
-                foreach (var button in buttons)
-                    MakeIcon(item.transform, font, button, 30);
+                var icons = buttons.Select(button => MakeIcon(item.transform, font, button, 30)).ToList();
                 var label = MakeText(item.transform, font, labelKey.i8(), 19, FontStyles.Normal, DimColor);
                 label.enableWordWrapping = false;
+                // One button: the whole hint is pressed; a pair (LB/RB): each icon on its own.
+                if (buttons.Length == 1)
+                    Clickable(item, buttons[0], label);
+                else
+                    for (int i = 0; i < buttons.Length; i++)
+                        Clickable(icons[i], buttons[i]);
                 made.Add(item);
             }
             return made;
@@ -2313,11 +2525,9 @@ namespace BuffIt2TheLimit {
         }
 
         // Falls back to a text label when the game has no icon for the button.
-        private static void MakeIcon(Transform parent, TMP_FontAsset font, RewiredActionType button, float size) {
-            if (PadSettings.KeyboardMode) {
-                MakeKeyLabel(parent, font, PadKeys.Label(button));
-                return;
-            }
+        private static GameObject MakeIcon(Transform parent, TMP_FontAsset font, RewiredActionType button, float size) {
+            if (PadSettings.KeyboardMode)
+                return MakeKeyLabel(parent, font, PadKeys.Label(button));
             Sprite sprite = null;
             try {
                 sprite = GamePadIcons.Instance?.GetIcon(button);
@@ -2325,7 +2535,7 @@ namespace BuffIt2TheLimit {
             if (sprite == null) {
                 var text = MakeText(parent, font, $"[{IconFallback(button)}]", 19, FontStyles.Bold, TitleColor);
                 text.enableWordWrapping = false;
-                return;
+                return text.gameObject;
             }
             var go = new GameObject("Icon", typeof(RectTransform));
             go.transform.SetParent(parent, false);
@@ -2335,24 +2545,32 @@ namespace BuffIt2TheLimit {
             var element = go.AddComponent<LayoutElement>();
             element.preferredWidth = size;
             element.preferredHeight = size;
+            return go;
         }
 
-        private static void MakeKeyLabel(Transform parent, TMP_FontAsset font, string key) {
+        private static GameObject MakeKeyLabel(Transform parent, TMP_FontAsset font, string key) {
             var text = MakeText(parent, font, $"[{key}]", 19, FontStyles.Bold, TitleColor);
             text.enableWordWrapping = false;
+            return text.gameObject;
         }
 
-        private static void MakeKeyHintBar(Transform parent, TMP_FontAsset font, params (string key, string labelKey)[] items) {
+        private static void MakeKeyHintBar(Transform parent, TMP_FontAsset font, params (string key, string labelKey, Action<PadQuickMenu> act)[] items) {
             var separator = new GameObject("HintSeparator", typeof(RectTransform));
             separator.transform.SetParent(parent, false);
             separator.AddComponent<Image>().color = PadTheme.Line;
             separator.AddComponent<LayoutElement>().preferredHeight = 1;
             var bar = MakeHorizontal(parent, "Hints", 24, TextAnchor.MiddleCenter);
-            foreach (var (key, labelKey) in items) {
+            foreach (var (key, labelKey, act) in items) {
                 var item = MakeHorizontal(bar.transform, "Hint", 6, TextAnchor.MiddleLeft);
                 MakeKeyLabel(item.transform, font, key);
                 var label = MakeText(item.transform, font, labelKey.i8(), 19, FontStyles.Normal, DimColor);
                 label.enableWordWrapping = false;
+                var pointer = AddPointer(item, tint: false);
+                pointer.Mark(label, TitleColor);
+                pointer.Click = _ => {
+                    if (instance != null && !instance.MouseBlocked)
+                        act(instance);
+                };
             }
         }
 
@@ -2400,7 +2618,7 @@ namespace BuffIt2TheLimit {
             layout.childForceExpandWidth = false;
             layout.childForceExpandHeight = false;
 
-            var row = new ListRow { Bg = bg };
+            var row = new ListRow { Bg = bg, Pointer = AddPointer(go, tint: true) };
             if (withBox) {
                 var holder = new GameObject("BoxSlot", typeof(RectTransform));
                 holder.transform.SetParent(go.transform, false);
@@ -2447,6 +2665,38 @@ namespace BuffIt2TheLimit {
             return row;
         }
 
+        private static PadPointer AddPointer(GameObject go, bool tint) {
+            var pointer = go.AddComponent<PadPointer>();
+            if (tint) {
+                var hover = new GameObject("Hover", typeof(RectTransform));
+                hover.transform.SetParent(go.transform, false);
+                hover.transform.SetAsFirstSibling();
+                hover.AddComponent<LayoutElement>().ignoreLayout = true;
+                Stretch((RectTransform)hover.transform, 0);
+                var image = hover.AddComponent<Image>();
+                image.color = PadTheme.RowHover;
+                image.raycastTarget = false;
+                image.enabled = false;
+                pointer.Tint = image;
+            }
+            return pointer;
+        }
+
+        private static readonly Color IconHover = new Color(1f, 0.82f, 0.5f);
+
+        // Hints of buttons that only point a direction (select, scroll) are not pressed.
+        private static void Clickable(GameObject go, RewiredActionType button, Graphic label = null) {
+            if (button != RewiredActionType.Confirm && button != RewiredActionType.Decline && button != RewiredActionType.Func01
+                && button != RewiredActionType.Func02 && button != RewiredActionType.LeftUp && button != RewiredActionType.RightUp
+                && button != RewiredActionType.DPadRight)
+                return;
+            var pointer = AddPointer(go, tint: false);
+            var mark = label != null ? label : go.GetComponent<Graphic>();
+            if (mark != null)
+                pointer.Mark(mark, mark is Image ? IconHover : mark.color == TitleColor ? TextColor : TitleColor);
+            pointer.Click = _ => instance?.Press(button);
+        }
+
         private static void Stretch(RectTransform rect, float inset) {
             rect.anchorMin = Vector2.zero;
             rect.anchorMax = Vector2.one;
@@ -2470,5 +2720,75 @@ namespace BuffIt2TheLimit {
             text.text = value;
             return text;
         }
+    }
+
+    // A part of the menu the mouse works on. The hover tint is an image of its own over the part's colour, so the menu
+    // redraws its rows without knowing where the pointer is.
+    internal class PadPointer : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler {
+        public Action<PointerEventData> Click;
+        // False on an empty row: no tint, and clicks do nothing.
+        public Func<bool> Live;
+        public Image Tint;
+        private Graphic mark;
+        private Color markColor;
+        private Color markHover;
+        private bool over;
+
+        public static PadPointer Over { get; private set; }
+
+        public void Mark(Graphic graphic, Color hover) {
+            mark = graphic;
+            markColor = graphic.color;
+            markHover = hover;
+        }
+
+        public void OnPointerEnter(PointerEventData eventData) {
+            over = true;
+            Over = this;
+            Refresh();
+        }
+
+        public void OnPointerExit(PointerEventData eventData) {
+            over = false;
+            if (Over == this)
+                Over = null;
+            Refresh();
+        }
+
+        public void OnPointerClick(PointerEventData eventData) {
+            if (eventData.button != PointerEventData.InputButton.Left || (Live != null && !Live()))
+                return;
+            try {
+                Click?.Invoke(eventData);
+            } catch (Exception ex) {
+                Main.Error(ex, "PadPointer.Click");
+            }
+            // The row under the pointer may now show something else, or nothing.
+            if (Over != null)
+                Over.Refresh();
+        }
+
+        // Rows show other items after a scroll, so the tint is checked again.
+        public void Refresh() {
+            bool lit = over && (Live == null || Live());
+            if (Tint != null)
+                Tint.enabled = lit;
+            if (mark != null)
+                mark.color = lit ? markHover : markColor;
+        }
+
+        private void OnDisable() {
+            over = false;
+            if (Over == this)
+                Over = null;
+            Refresh();
+        }
+    }
+
+    // The wheel anywhere over the menu's screen.
+    internal class PadWheel : MonoBehaviour, IScrollHandler {
+        public Action<float> Scroll;
+
+        public void OnScroll(PointerEventData eventData) => Scroll?.Invoke(eventData.scrollDelta.y);
     }
 }
