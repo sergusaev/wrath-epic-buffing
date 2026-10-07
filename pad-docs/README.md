@@ -90,6 +90,17 @@ Columns: name, duration (rounds / minutes / 10 min / hours / toggle), who (self 
 
 The party strip: green — the target is set; gold — the cursor; a struck-through reddish name — the buff cannot be cast on this character.
 
+**Mouse** — works in the menu in either hint mode (on the Steam Deck, the right trackpad); clicks on the menu do not reach the game.
+
+| Mouse | Action |
+|---|---|
+| hover | lights up a row, a key or a hint; the selection does not change |
+| left click on a row | select it; a second click on the selected row acts as A (the first click on a group in the main menu only selects it) |
+| left click, at once | main menu entries other than groups; "+ New group"; a buff's tick box; a character in the party strip; the neighbouring target tabs; keys of the on-screen keyboard; the ‹ › arrows of a value in settings (a click on the value steps it forward) |
+| right click anywhere | back, as B; on the main menu — close; while a key is being assigned — cancel |
+| wheel | scrolls group members, buff targets, settings and help by three rows; the selection moves with the list |
+| left click on a hint at the bottom | what its button or key does; for an LB/RB pair, the icon of the side you want; direction hints are not pressed |
+
 Every change is saved to the settings file at once.
 
 ## Groups
@@ -119,7 +130,7 @@ Every change is saved to the settings file at once.
 
 The same menu (groups, checkboxes, automatic targets, help, gestures) is built for Kingmaker by the separate project `BuffIt2TheLimit.Kingmaker/`. It compiles the shared files of `BuffIt2TheLimit/` with the `KINGMAKER` symbol; the WotR PC spellbook UI (`BubbleBuffer.cs`, `UIHelpers.cs`, `Main.cs`) is not part of that build.
 
-- **Mouse mode and gamepad mode.** In gamepad mode the menu takes the buttons through the game's console input layer; in mouse mode there is no such layer, so the gamepad is polled directly and the keyboard works too (arrows, Enter, Backspace).
+- **Mouse mode and gamepad mode.** In gamepad mode the menu takes the buttons through the game's console input layer; in mouse mode there is no such layer, so the gamepad is polled directly and the keyboard works too (arrows, Enter, Backspace). The mouse works in both modes: a `PadPointer` component on rows and hints, `PadWheel` on the menu canvas — which also keeps the game from zooming on the wheel (Kingmaker does not zoom while a scroll handler is under the pointer).
 - **Steam Input layout.** Kingmaker keeps its layout in Steam Cloud; the steps from [Opening the menu](#opening-the-menu) work the same.
 
 **What differs from WotR**
