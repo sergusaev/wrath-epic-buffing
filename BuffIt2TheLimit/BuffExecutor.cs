@@ -236,6 +236,7 @@ namespace BuffIt2TheLimit {
             }
 
             int applied = tasks.Count(t => t.ActuallyFired) + activated;
+            Main.Log($"[PAD] {title} casts: fired {applied - activated} of {tasks.Count} queued");
             try {
                 FinishedRoutines++;
                 Main.Log($"[PAD] routine finished: {title} applied {applied}/{attempted}, skipped {skipped}");
@@ -590,7 +591,7 @@ namespace BuffIt2TheLimit {
                         }
 
                         if (!target.IsAvailable) {
-                            Main.Verbose($"Activatable {actBuff.Name}: not available for {caster.CharacterName} (resources or restrictions)");
+                            Main.Log($"[PAD] toggle {actBuff.Name}: not available for {caster.CharacterName}");
                             continue;
                         }
 
@@ -620,6 +621,8 @@ namespace BuffIt2TheLimit {
                             target.TryStart();
                         if (target.IsOn)
                             activated++;
+                        else
+                            Main.Log($"[PAD] toggle {actBuff.Name}: did not switch on for {caster.CharacterName}");
                         if (actBuff.DeactivateAfterRounds > 0)
                             GlobalBubbleBuffer.RoundLimitWatcher?.TrackActivation(caster, activatable.Blueprint.Gid());
                     } catch (Exception ex) {
@@ -627,6 +630,8 @@ namespace BuffIt2TheLimit {
                     }
                 }
             }
+
+            Main.Log($"[PAD] {buffGroup} toggles: switched on {activated}/{activationAttempts}, already on {alreadyOn}");
 
             TargetWrapper[] targets = Bubble.Group.Select(u => new TargetWrapper(u)).ToArray();
             int attemptedCasts = 0;
