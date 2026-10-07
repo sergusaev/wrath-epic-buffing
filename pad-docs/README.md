@@ -1,14 +1,14 @@
-# Buff It 2 The Limit (Pad): gamepad menu
+# Buff It 2 The Limit (Groups): buff group menu
 
 [Русская версия](README.ru.md)
 
-This fork of [Buff It 2 The Limit](https://github.com/Gh05d/wrath-epic-buffing) 1.21.2 (MIT; authors Vek17, factubsio, Gh05d) adds a menu that is driven entirely by the gamepad, for Pathfinder: Wrath of the Righteous and Pathfinder: Kingmaker in the console interface. The original mod is configured only from the PC spellbook screen, which does not exist in the console interface.
+This fork of [Buff It 2 The Limit](https://github.com/Gh05d/wrath-epic-buffing) 1.21.2 (MIT; authors Vek17, factubsio, Gh05d) adds a menu of buff groups for Pathfinder: Wrath of the Righteous and Pathfinder: Kingmaker. It is driven entirely by the gamepad in the console interface, where the PC spellbook screen of the original mod does not exist, and by keyboard and mouse in the PC interface (see [Controls](#controls)).
 
 ## Installing
 
 1. Install Unity Mod Manager for the game.
 2. Build the mod (see [Building](#building)) or take a release.
-3. WotR: copy `BuffIt2TheLimit.dll` and `Info.json` into `<game>/Mods/BuffIt2TheLimit/` (the Steam Deck guide uses `mods`; Proton ignores case). UMM lists the mod as "Buff It 2 The Limit (Pad)". It replaces the original mod: both use the same id and the same settings files. It also replaces BubbleBuffs, but does not read the BubbleBuffs settings (`bubblebuff-*.json`).
+3. WotR: copy `BuffIt2TheLimit.dll` and `Info.json` into `<game>/Mods/BuffIt2TheLimit/` (the Steam Deck guide uses `mods`; Proton ignores case). UMM lists the mod as "Buff It 2 The Limit (Groups)". It replaces the original mod: both use the same id and the same settings files. It also replaces BubbleBuffs, but does not read the BubbleBuffs settings (`bubblebuff-*.json`).
 4. Kingmaker: copy `PadBuffsKingmaker.dll` and `Info.json` into `<game>/Mods/PadBuffsKingmaker/`.
 
 ## Opening the menu
@@ -168,7 +168,7 @@ The same menu (groups, checkboxes, automatic targets, help, gestures) is built f
 - `BubbleBuffer.cs`: `Awake` of the spellbook controller no longer throws in gamepad mode, where there is no spellbook (the original threw `NullReferenceException` in `TryFixEILayout`).
 - `IBeneficialEffect.cs`: `OwnBuffGuids` for the remaining time; `Duration` for the buff duration class.
 - `SaveState.cs`: `Groups` (custom groups) and `DisabledIn` (checkboxes) in the settings file.
-- `Info.json`: the name "Buff It 2 The Limit (Pad)", the fork's home page, no update repository (the original's update feed would replace the fork).
+- `Info.json`: the name "Buff It 2 The Limit (Groups)" (until 1.21.2-pad.3 and kingmaker-v0.2.0 it was "(Pad)"; the Ids and folders `BuffIt2TheLimit` and `PadBuffsKingmaker` stay, so updates go over the old installation), the fork's home page, no update repository (the original's update feed would replace the fork).
 
 ## Building
 

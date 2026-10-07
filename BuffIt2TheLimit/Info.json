@@ -1,7 +1,7 @@
 {
     "AssemblyName": "BuffIt2TheLimit.dll",
     "Author": "Vek17, factubsio, Gh05d; gamepad fork by sergusaev",
-    "DisplayName": "Buff It 2 The Limit (Pad)",
+    "DisplayName": "Buff It 2 The Limit (Groups)",
     "EntryMethod": "BuffIt2TheLimit.Main.Load",
     "GameVersion": "1.4.0",
     "HomePage": "https://github.com/sergusaev/wrath-epic-buffing",

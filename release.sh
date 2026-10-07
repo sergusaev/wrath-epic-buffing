@@ -1,5 +1,5 @@
 #!/bin/bash
-# Package Buff It 2 The Limit (Pad) as a release zip and optionally publish it on GitHub.
+# Package Buff It 2 The Limit (Groups) as a release zip and optionally publish it on GitHub.
 #
 # Usage: ./release.sh wotr|kingmaker [--publish] [--notes FILE]
 #   wotr       BuffIt2TheLimit/ for <WotR>/mods/, tag v<Info.json Version>-pad.<N>, N = next unreleased number
@@ -44,7 +44,7 @@ if [ "$TARGET" = wotr ]; then
   VERSION="$BASE-pad.$N"
   TAG="v$VERSION"
   ZIPNAME="BuffIt2TheLimit-Pad-$VERSION.zip"
-  TITLE="Buff It 2 The Limit (Pad) $VERSION (Wrath of the Righteous)"
+  TITLE="Buff It 2 The Limit (Groups) $VERSION (Wrath of the Righteous)"
   INSTALL="Unpack into \`<WotR>/Mods/\` so the result is \`Mods/BuffIt2TheLimit/Info.json\`; when updating, delete \`*.cache\` there. It replaces the original Buff It 2 The Limit and keeps its settings files; it also replaces BubbleBuffs, but does not read BubbleBuffs settings (\`bubblebuff-*.json\`)."
   GUIDE_LINK="[pad-docs/README.md]($DOCS/README.md) ([русский]($DOCS/README.ru.md))"
 else
@@ -54,7 +54,7 @@ else
   VERSION="$(version_of "$HERE/BuffIt2TheLimit.Kingmaker/Info.json")"
   TAG="kingmaker-v$VERSION"
   ZIPNAME="PadBuffsKingmaker-$VERSION.zip"
-  TITLE="Buff It 2 The Limit (Pad) for Kingmaker $VERSION"
+  TITLE="Buff It 2 The Limit (Groups) for Kingmaker $VERSION"
   INSTALL="Unpack into \`<Kingmaker>/Mods/\` so the result is \`Mods/PadBuffsKingmaker/Info.json\`; when updating, delete \`*.cache\` there. The menu key is F7 by default."
   GUIDE_LINK="[pad-docs/README.md, section Kingmaker]($DOCS/README.md#kingmaker) ([русский]($DOCS/README.ru.md#kingmaker))"
 fi

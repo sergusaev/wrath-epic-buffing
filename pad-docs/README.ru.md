@@ -1,14 +1,14 @@
-# Buff It 2 The Limit (Pad): меню для геймпада
+# Buff It 2 The Limit (Groups): меню групп баффов
 
 [English version](README.md)
 
-Форк [Buff It 2 The Limit](https://github.com/Gh05d/wrath-epic-buffing) 1.21.2 (MIT; авторы Vek17, factubsio, Gh05d) добавляет меню, которым целиком управляют с геймпада, для Pathfinder: Wrath of the Righteous и Pathfinder: Kingmaker в консольном интерфейсе. Оригинальный мод настраивается только в PC-экране книги заклинаний, а в консольном интерфейсе этого экрана нет.
+Форк [Buff It 2 The Limit](https://github.com/Gh05d/wrath-epic-buffing) 1.21.2 (MIT; авторы Vek17, factubsio, Gh05d) добавляет меню групп баффов для Pathfinder: Wrath of the Righteous и Pathfinder: Kingmaker. В консольном интерфейсе им целиком управляют с геймпада — PC-экрана книги заклинаний оригинала там нет, — в PC-интерфейсе с клавиатуры и мышью (см. [Управление](#управление)).
 
 ## Установка
 
 1. Установить Unity Mod Manager для игры.
 2. Собрать мод (см. [Сборка](#сборка)) или взять релиз.
-3. WotR: положить `BuffIt2TheLimit.dll` и `Info.json` в `<игра>/Mods/BuffIt2TheLimit/` (в справке для Steam Deck — `mods`; Proton регистр не различает). В UMM мод называется «Buff It 2 The Limit (Pad)». Он заменяет оригинальный мод: у них один id и одни файлы настроек. BubbleBuffs он тоже заменяет, но его настройки (`bubblebuff-*.json`) не читает.
+3. WotR: положить `BuffIt2TheLimit.dll` и `Info.json` в `<игра>/Mods/BuffIt2TheLimit/` (в справке для Steam Deck — `mods`; Proton регистр не различает). В UMM мод называется «Buff It 2 The Limit (Groups)». Он заменяет оригинальный мод: у них один id и одни файлы настроек. BubbleBuffs он тоже заменяет, но его настройки (`bubblebuff-*.json`) не читает.
 4. Kingmaker: положить `PadBuffsKingmaker.dll` и `Info.json` в `<игра>/Mods/PadBuffsKingmaker/`.
 
 ## Открытие меню
@@ -168,7 +168,7 @@ F-клавиш на геймпаде нет, поэтому клавишу на�
 - `BubbleBuffer.cs`: `Awake` контроллера книги заклинаний больше не падает в режиме геймпада, где книги нет (в оригинале `NullReferenceException` в `TryFixEILayout`).
 - `IBeneficialEffect.cs`: `OwnBuffGuids` для оставшегося времени; `Duration` — класс длительности баффа.
 - `SaveState.cs`: `Groups` (свои группы) и `DisabledIn` (галочки) в файле настроек.
-- `Info.json`: имя «Buff It 2 The Limit (Pad)», страница форка, без репозитория обновлений (лента обновлений оригинала заменила бы форк).
+- `Info.json`: имя «Buff It 2 The Limit (Groups)» (до 1.21.2-pad.3 и kingmaker-v0.2.0 — «(Pad)»; Id и папки `BuffIt2TheLimit` и `PadBuffsKingmaker` прежние, обновление ставится поверх), страница форка, без репозитория обновлений (лента обновлений оригинала заменила бы форк).
 
 ## Сборка
 

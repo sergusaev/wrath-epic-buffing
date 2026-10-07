@@ -15,7 +15,7 @@ namespace BuffIt2TheLimit {
     // How the targets of a buff are chosen automatically.
     internal enum TargetKind { None, Self, Party, Song }
 
-    // Groups of the gamepad menu: the three built-in groups plus custom ones stored in
+    // Groups of the buff menu: the three built-in groups plus custom ones stored in
     // SavedBufferState.Groups, and buff membership with a per-group on/off switch.
     // Targets belong to the buff, not to the group: a buff in two groups has the same targets in both.
     internal static class PadGroups {

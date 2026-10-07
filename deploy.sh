@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build (Release) and install Buff It 2 The Limit (Pad) on a Steam Deck over SSH.
+# Build (Release) and install Buff It 2 The Limit (Groups) on a Steam Deck over SSH.
 # Usage: DECK=deck@steamdeck.local ./deploy.sh [--bind-menu] [--kingmaker]
 #   DECK         SSH target of the deck (required).
 #   WOTR_DIR, KINGMAKER_DIR  game folders on the deck; default: the internal Steam library.

@@ -14,7 +14,7 @@ using UnityModManagerNet;
 namespace BuffIt2TheLimit {
 
     // Kingmaker entry point. The game has no spellbook UI to hook into here, so the mod is
-    // only the buff engine plus the gamepad menu (PadQuickMenu), opened by the menu key.
+    // only the buff engine plus the buff menu (PadQuickMenu), opened by the menu key.
     static class Main {
         public static string ModPath;
         private static Harmony harmony;

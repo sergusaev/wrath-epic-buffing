@@ -59,7 +59,7 @@ namespace BuffIt2TheLimit {
             keys.Any(k => Input.GetKey(k) && (letters || k < KeyCode.A || k > KeyCode.Z));
     }
 
-    // Help text of the gamepad menu and button icons inside menu texts.
+    // Help text of the buff menu and button icons inside menu texts.
     // Texts mark buttons as {A} {B} {X} {Y} {LB} {RB} {UP} {DOWN} {LEFT} {RIGHT} {L5};
     // they become sprites of the game's own sprite asset (the one its console tutorials use),
     // or bracketed letters when the asset is not found. Built-in group names are {G1} {G2} {G3}.

@@ -1,9 +1,9 @@
-> **Fork with a gamepad menu.** This is [sergusaev/wrath-epic-buffing](https://github.com/sergusaev/wrath-epic-buffing), a fork of [Gh05d/wrath-epic-buffing](https://github.com/Gh05d/wrath-epic-buffing) (Buff It 2 The Limit 1.21.2). It adds a menu driven entirely by the gamepad for the console interface of Wrath of the Righteous, and a port of that menu to Pathfinder: Kingmaker.
+> **Fork with a buff group menu for gamepad, keyboard and mouse.** This is [sergusaev/wrath-epic-buffing](https://github.com/sergusaev/wrath-epic-buffing), a fork of [Gh05d/wrath-epic-buffing](https://github.com/Gh05d/wrath-epic-buffing) (Buff It 2 The Limit 1.21.2). It adds Buff It 2 The Limit (Groups): a menu of buff groups driven by the gamepad in the console interface of Wrath of the Righteous and by keyboard and mouse in its PC interface, and a port of that menu to Pathfinder: Kingmaker.
 >
 > - Branch `gamepad` (default) holds the fork; branch `master` mirrors the original and is kept in sync with it.
-> - Gamepad menu guide, Kingmaker port, building and fork maintenance: [pad-docs/README.md](pad-docs/README.md) ([на русском](pad-docs/README.ru.md)).
+> - Menu guide, Kingmaker port, building and fork maintenance: [pad-docs/README.md](pad-docs/README.md) ([на русском](pad-docs/README.ru.md)).
 > - Installing on the Steam Deck from scratch (Unity Mod Manager, Steam Input layout): [Steam Deck guide](https://github.com/sergusaev/pathfinder-mods/blob/main/docs/steam-deck.md). Ready zips: [Releases](https://github.com/sergusaev/wrath-epic-buffing/releases).
-> - Everything below is the original README. Issues with the gamepad menu belong here, not to the original mod.
+> - Everything below is the original README. Issues with the group menu belong here, not to the original mod.
 
 # Buff It 2 The Limit
 
