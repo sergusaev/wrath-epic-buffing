@@ -1,8 +1,9 @@
 {
   "Id": "PadBuffsKingmaker",
   "DisplayName": "Buff It 2 The Limit (Pad) for Kingmaker",
-  "Author": "Vek17, factubsio, Gh05d; Kingmaker pad port",
+  "Author": "Vek17, factubsio, Gh05d; gamepad fork and Kingmaker port by sergusaev",
   "Version": "0.1.0",
+  "HomePage": "https://github.com/sergusaev/wrath-epic-buffing",
   "ManagerVersion": "0.22.0",
   "Requirements": [],
   "EntryMethod": "BuffIt2TheLimit.Main.Load"

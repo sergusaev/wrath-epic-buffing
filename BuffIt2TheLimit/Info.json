@@ -1,13 +1,12 @@
 {
     "AssemblyName": "BuffIt2TheLimit.dll",
-    "Author": "Gh05d",
+    "Author": "Vek17, factubsio, Gh05d; gamepad fork by sergusaev",
     "DisplayName": "Buff It 2 The Limit (Pad)",
     "EntryMethod": "BuffIt2TheLimit.Main.Load",
     "GameVersion": "1.4.0",
-    "HomePage": "https://www.nexusmods.com/pathfinderwrathoftherighteous/mods/948",
+    "HomePage": "https://github.com/sergusaev/wrath-epic-buffing",
     "Id": "BuffIt2TheLimit",
     "ManagerVersion": "0.23.0",
-    "Repository": "https://raw.githubusercontent.com/Gh05d/wrath-epic-buffing/master/Repository.json",
     "Requirements": [],
     "LoadAfter": ["EnhancedInventory"],
     "Version": "1.21.2"

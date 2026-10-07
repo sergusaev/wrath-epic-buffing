@@ -1,3 +1,9 @@
+> **Fork with a gamepad menu.** This is [sergusaev/wrath-epic-buffing](https://github.com/sergusaev/wrath-epic-buffing), a fork of [Gh05d/wrath-epic-buffing](https://github.com/Gh05d/wrath-epic-buffing) (Buff It 2 The Limit 1.21.2). It adds a menu driven entirely by the gamepad for the console interface of Wrath of the Righteous, and a port of that menu to Pathfinder: Kingmaker.
+>
+> - Branch `gamepad` (default) holds the fork; branch `master` mirrors the original and is kept in sync with it.
+> - Gamepad menu guide, Kingmaker port, building and fork maintenance: [pad-docs/README.md](pad-docs/README.md) ([на русском](pad-docs/README.ru.md)).
+> - Everything below is the original README. Issues with the gamepad menu belong here, not to the original mod.
+
 # Buff It 2 The Limit
 
 A fork of [factubsio's BubbleBuffs](https://github.com/factubsio/BubbleBuffs) — the buff automation mod for **Pathfinder: Wrath of the Righteous**, now continued as **Buff It 2 The Limit**.
