@@ -8,9 +8,9 @@ using UnityEngine.UI;
 
 namespace BuffIt2TheLimit {
 
-    // Gestures on the menu key in gamepad mode. Steam Input sends the key down on press
-    // and up on release, so timing is measured here instead of with Steam activators
-    // (a Steam long press also fires the regular press, double press never arrived).
+    // Gestures on the menu key, in both control modes; they can be switched off in the menu settings.
+    // Steam Input sends the key down on press and up on release, so timing is measured here instead
+    // of with Steam activators (a Steam long press also fires the regular press, double press never arrived).
     //   tap         → open/close the menu (after the double-tap window)
     //   hold 0.6 s  → apply Long
     //   double tap  → apply Important
@@ -27,13 +27,21 @@ namespace BuffIt2TheLimit {
         public static void Tick(ShortcutBinding key) {
             if (key.IsNone)
                 return;
+            // Without gestures the key only opens and closes the menu, at once.
+            if (!PadSettings.Current.Gestures) {
+                tapPending = false;
+                downAt = -1f;
+                if (key.IsPressed())
+                    PadQuickMenu.Toggle();
+                return;
+            }
             float now = Time.unscaledTime;
 
             if (key.IsPressed()) {
                 if (tapPending && now <= tapDeadline) {
                     tapPending = false;
                     downAt = -1f;
-                    Run(BuffGroup.Important, "double");
+                    Apply(BuffGroup.Important, "double");
                     return;
                 }
                 downAt = now;
@@ -43,7 +51,7 @@ namespace BuffIt2TheLimit {
             if (downAt >= 0f) {
                 if (!holdFired && Input.GetKey(key.Key) && now - downAt >= HoldTime) {
                     holdFired = true;
-                    Run(BuffGroup.Long, "hold");
+                    Apply(BuffGroup.Long, "hold");
                 }
                 if (Input.GetKeyUp(key.Key) || !Input.GetKey(key.Key)) {
                     if (!holdFired) {
@@ -60,14 +68,15 @@ namespace BuffIt2TheLimit {
             }
         }
 
-        private static void Run(BuffGroup group, string gesture) {
-            Main.Log($"[PAD] gesture {gesture} → {group}");
+        // Gestures and the quick cast bar: the result shows in a pop-up as for a menu cast.
+        internal static void Apply(BuffGroup group, string gesture) {
+            Main.Log($"[PAD] {gesture} → {group}");
             int before = BuffExecutor.ScheduledRoutines;
             int finishedBefore = BuffExecutor.FinishedRoutines;
             try {
                 GlobalBubbleBuffer.Execute(group);
             } catch (Exception ex) {
-                Main.Error(ex, "PadGestures.Run");
+                Main.Error(ex, "PadGestures.Apply");
             }
             string name = PadQuickMenu.GroupName(group);
             if (BuffExecutor.ScheduledRoutines == before)
@@ -106,7 +115,7 @@ namespace BuffIt2TheLimit {
             var lines = new List<string> { string.Format("pad.result".i8(), title, applied, attempted, skipped) };
             foreach (var bad in tooltip.Bad.Take(4)) {
                 var reasons = string.Join("; ", bad.messages.Select(m => m.Trim()).Take(1));
-                lines.Add($"<color=#E08A7A>{bad.buff.Name}</color> {reasons}");
+                lines.Add($"<color={PadTheme.Bad}>{bad.buff.Name}</color> {reasons}");
             }
             Show(string.Join("\n", lines));
         }
@@ -122,7 +131,7 @@ namespace BuffIt2TheLimit {
         }
 
         private static PadToast Build() {
-            var font = FindObjectsOfType<TextMeshProUGUI>().Select(t => t.font).FirstOrDefault(f => f != null);
+            var font = PadTheme.Font;
 
             var overlay = new GameObject("BI2TL_PadToast", typeof(RectTransform));
             DontDestroyOnLoad(overlay);
@@ -140,9 +149,9 @@ namespace BuffIt2TheLimit {
             rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 1f);
             rect.anchoredPosition = new Vector2(0, -40);
             rect.sizeDelta = new Vector2(760, 0);
-            panel.AddComponent<Image>().color = new Color(0.06f, 0.05f, 0.04f, 0.9f);
+            PadTheme.Tip(panel.AddComponent<Image>(), 0.9f);
             var layout = panel.AddComponent<VerticalLayoutGroup>();
-            layout.padding = new RectOffset(20, 20, 12, 12);
+            layout.padding = PadTheme.Paper ? PadTheme.TipPadding : new RectOffset(20, 20, 12, 12);
             layout.childControlWidth = true;
             layout.childControlHeight = true;
             layout.childForceExpandWidth = true;
@@ -155,7 +164,7 @@ namespace BuffIt2TheLimit {
             if (font != null)
                 text.font = font;
             text.fontSize = 21;
-            text.color = new Color(0.92f, 0.9f, 0.85f);
+            text.color = PadTheme.Text;
             text.richText = true;
             text.enableWordWrapping = true;
 

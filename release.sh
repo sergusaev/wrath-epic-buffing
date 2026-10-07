@@ -45,7 +45,7 @@ if [ "$TARGET" = wotr ]; then
   TAG="v$VERSION"
   ZIPNAME="BuffIt2TheLimit-Pad-$VERSION.zip"
   TITLE="Buff It 2 The Limit (Pad) $VERSION (Wrath of the Righteous)"
-  INSTALL="Unpack into \`<WotR>/mods/\` so the result is \`mods/BuffIt2TheLimit/Info.json\`; when updating, delete \`*.cache\` there. It replaces the original Buff It 2 The Limit and BubbleBuffs and keeps their settings files."
+  INSTALL="Unpack into \`<WotR>/Mods/\` so the result is \`Mods/BuffIt2TheLimit/Info.json\`; when updating, delete \`*.cache\` there. It replaces the original Buff It 2 The Limit and keeps its settings files; it also replaces BubbleBuffs, but does not read BubbleBuffs settings (\`bubblebuff-*.json\`)."
   GUIDE_LINK="[pad-docs/README.md]($DOCS/README.md) ([русский]($DOCS/README.ru.md))"
 else
   PROJECT="BuffIt2TheLimit.Kingmaker/BuffIt2TheLimit.Kingmaker.csproj"

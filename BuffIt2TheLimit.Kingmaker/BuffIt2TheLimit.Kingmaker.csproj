@@ -36,6 +36,8 @@
 		<Compile Include="..\BuffIt2TheLimit\PadHelp.cs" />
 		<Compile Include="..\BuffIt2TheLimit\PadQuickMenu.cs" />
 		<Compile Include="..\BuffIt2TheLimit\PadGestures.cs" />
+		<Compile Include="..\BuffIt2TheLimit\PadSettings.cs" />
+		<Compile Include="..\BuffIt2TheLimit\PadTheme.cs" />
 		<Compile Include="..\BuffIt2TheLimit\Extensions\ExtentionMethods.cs" />
 		<Compile Include="..\BuffIt2TheLimit\CoreTypes.cs" />
 		<Compile Include="..\BuffIt2TheLimit\Config\ModSettings.cs" />
@@ -47,6 +49,18 @@
 		<EmbeddedResource Include="..\BuffIt2TheLimit\Config\fr_FR.json" LogicalName="BuffIt2TheLimit.Config.fr_FR.json" />
 		<EmbeddedResource Include="..\BuffIt2TheLimit\Config\ru_RU.json" LogicalName="BuffIt2TheLimit.Config.ru_RU.json" />
 		<EmbeddedResource Include="..\BuffIt2TheLimit\Config\zh_CN.json" LogicalName="BuffIt2TheLimit.Config.zh_CN.json" />
+		<EmbeddedResource Include="..\BuffIt2TheLimit\Assets\icons\apply_buffs_normal.png" LogicalName="BuffIt2TheLimit.icons.apply_buffs_normal.png" />
+		<EmbeddedResource Include="..\BuffIt2TheLimit\Assets\icons\apply_buffs_hover.png" LogicalName="BuffIt2TheLimit.icons.apply_buffs_hover.png" />
+		<EmbeddedResource Include="..\BuffIt2TheLimit\Assets\icons\apply_buffs_down.png" LogicalName="BuffIt2TheLimit.icons.apply_buffs_down.png" />
+		<EmbeddedResource Include="..\BuffIt2TheLimit\Assets\icons\apply_buffs_important_normal.png" LogicalName="BuffIt2TheLimit.icons.apply_buffs_important_normal.png" />
+		<EmbeddedResource Include="..\BuffIt2TheLimit\Assets\icons\apply_buffs_important_hover.png" LogicalName="BuffIt2TheLimit.icons.apply_buffs_important_hover.png" />
+		<EmbeddedResource Include="..\BuffIt2TheLimit\Assets\icons\apply_buffs_important_down.png" LogicalName="BuffIt2TheLimit.icons.apply_buffs_important_down.png" />
+		<EmbeddedResource Include="..\BuffIt2TheLimit\Assets\icons\apply_buffs_short_normal.png" LogicalName="BuffIt2TheLimit.icons.apply_buffs_short_normal.png" />
+		<EmbeddedResource Include="..\BuffIt2TheLimit\Assets\icons\apply_buffs_short_hover.png" LogicalName="BuffIt2TheLimit.icons.apply_buffs_short_hover.png" />
+		<EmbeddedResource Include="..\BuffIt2TheLimit\Assets\icons\apply_buffs_short_down.png" LogicalName="BuffIt2TheLimit.icons.apply_buffs_short_down.png" />
+		<EmbeddedResource Include="..\BuffIt2TheLimit\Assets\icons\open_buffs_normal.png" LogicalName="BuffIt2TheLimit.icons.open_buffs_normal.png" />
+		<EmbeddedResource Include="..\BuffIt2TheLimit\Assets\icons\open_buffs_hover.png" LogicalName="BuffIt2TheLimit.icons.open_buffs_hover.png" />
+		<EmbeddedResource Include="..\BuffIt2TheLimit\Assets\icons\open_buffs_down.png" LogicalName="BuffIt2TheLimit.icons.open_buffs_down.png" />
 		<None Include="Info.json">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>

@@ -14,20 +14,15 @@ namespace BuffIt2TheLimit {
             this.group = group;
         }
 
-        private string KeyPrefix => group switch {
-            BuffGroup.Long => "group.normal",
-            BuffGroup.Quick => "group.short",
-            BuffGroup.Important => "group.important",
-            _ => "group.normal"
-        };
-
+        // Names and hotkeys as in the pad menu, where the groups are made.
         public override IEnumerable<ITooltipBrick> GetHeader(TooltipTemplateType type) {
-            yield return new TooltipBrickEntityHeader($"{KeyPrefix}.tooltip.header".i8(), null);
+            yield return new TooltipBrickEntityHeader(PadGroups.Name(group), null);
         }
 
         public override IEnumerable<ITooltipBrick> GetBody(TooltipTemplateType type) {
             List<ITooltipBrick> elements = new();
-            elements.Add(new TooltipBrickText($"{KeyPrefix}.tooltip.desc".i8()));
+            var key = GlobalBubbleBuffer.Instance?.SpellbookController?.state?.GetShortcut(group) ?? ShortcutBinding.None;
+            elements.Add(new TooltipBrickText(string.Format("pad.bar.tip".i8(), key.IsNone ? "shortcut.none".i8() : key.ToDisplayString())));
             elements.Add(new TooltipBrickSeparator());
 
             var state = GlobalBubbleBuffer.Instance?.SpellbookController?.state;

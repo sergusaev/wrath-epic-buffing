@@ -127,9 +127,10 @@ namespace BuffIt2TheLimit {
                 // Handle buff group shortcut execution
                 var state = GlobalBubbleBuffer.Instance?.SpellbookController?.state;
                 if (state != null) {
+                    // Group keys are off while the menu is open: its keys and typed names must not cast.
                     foreach (BuffGroup group in BuffGroups) {
                         var binding = state.GetShortcut(group);
-                        if (binding.IsPressed()) {
+                        if (!PadQuickMenu.IsOpen && binding.IsPressed()) {
                             GlobalBubbleBuffer.Execute(group);
                         }
                     }
@@ -147,15 +148,9 @@ namespace BuffIt2TheLimit {
                             }
                         }
                     }
-#if KINGMAKER
-                    // No PC buff window in Kingmaker: the gestures drive the pad menu in both modes.
-                    PadGestures.Tick(state.GetOpenBuffMenuShortcut());
-#else
-                    if (Game.Instance.IsControllerGamepad)
+                    // The pad menu is the only buff screen, in both control modes and both games.
+                    if (!PadQuickMenu.Capturing)
                         PadGestures.Tick(state.GetOpenBuffMenuShortcut());
-                    else if (state.GetOpenBuffMenuShortcut().IsPressed())
-                        instance?.OpenBuffMenu();
-#endif
                 }
             }
         }
@@ -898,12 +893,7 @@ namespace BuffIt2TheLimit {
             }
 
             bool armorBypass = State.BypassArcaneSpellFailure && !Game.Instance.Player.IsInCombat;
-#if KINGMAKER
             string title = PadGroups.Name(buffGroup);
-#else
-            // The pad menu names groups by duration; the PC spellbook keeps the original names.
-            string title = Game.Instance.IsControllerGamepad ? PadGroups.Name(buffGroup) : buffGroup.i8();
-#endif
             ScheduledRoutines++;
             BubbleBuffGlobalController.Instance.CastSpellsAndLog(tasks, armorBypass, title,
                 attemptedCasts + activationAttempts, skippedCasts + alreadyOn, tooltip, activated);

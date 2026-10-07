@@ -8,7 +8,7 @@ This fork of [Buff It 2 The Limit](https://github.com/Gh05d/wrath-epic-buffing) 
 
 1. Install Unity Mod Manager for the game.
 2. Build the mod (see [Building](#building)) or take a release.
-3. WotR: copy `BuffIt2TheLimit.dll` and `Info.json` into `<game>/mods/BuffIt2TheLimit/`. UMM lists the mod as "Buff It 2 The Limit (Pad)". It replaces the original mod: both use the same id and the same settings files.
+3. WotR: copy `BuffIt2TheLimit.dll` and `Info.json` into `<game>/Mods/BuffIt2TheLimit/` (the Steam Deck guide uses `mods`; Proton ignores case). UMM lists the mod as "Buff It 2 The Limit (Pad)". It replaces the original mod: both use the same id and the same settings files. It also replaces BubbleBuffs, but does not read the BubbleBuffs settings (`bubblebuff-*.json`).
 4. Kingmaker: copy `PadBuffsKingmaker.dll` and `Info.json` into `<game>/Mods/PadBuffsKingmaker/`.
 
 ## Opening the menu
@@ -198,6 +198,10 @@ scp -r "deck@steamdeck.local:/home/deck/.local/share/Steam/steamapps/common/Path
 	</PropertyGroup>
 </Project>
 ```
+
+`GamePath.props` is not tracked by git: one copied from another machine (with the working copy or the `GameInstall*` folders) still points to that machine's path, and the build then fails on missing game assemblies. Fix `WrathInstallDir` after copying.
+
+On Windows run `git config core.filemode false` once in the clone: Windows has no executable bit, so otherwise git shows every `.sh` file as modified. Copying `.git` from another machine brings back the old value.
 
 The Kingmaker project uses `GameInstallKM/` unless `KingmakerInstallDir` is set in `GamePath.props`. After a successful WotR build the project also copies the mod into `$(WrathInstallDir)/Mods/` — harmless with `GameInstall/`.
 

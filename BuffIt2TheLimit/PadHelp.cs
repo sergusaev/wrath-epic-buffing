@@ -10,8 +10,54 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using TMPro;
+using UnityEngine;
 
 namespace BuffIt2TheLimit {
+
+    // Keyboard keys of the pad menu: each gamepad action has a key next to WASD, then the usual duplicates.
+    // The game's own hotkeys are off while the menu is open, so these keys do not reach the game.
+    internal static class PadKeys {
+        public static readonly KeyCode[] Confirm = { KeyCode.E, KeyCode.Return, KeyCode.KeypadEnter, KeyCode.Space };
+        public static readonly KeyCode[] Decline = { KeyCode.Q, KeyCode.Escape, KeyCode.Backspace };
+        public static readonly KeyCode[] Func01 = { KeyCode.R };
+        public static readonly KeyCode[] Func02 = { KeyCode.F };
+        public static readonly KeyCode[] LeftUp = { KeyCode.X, KeyCode.PageUp };
+        public static readonly KeyCode[] RightUp = { KeyCode.C, KeyCode.PageDown };
+        public static readonly KeyCode[] Up = { KeyCode.UpArrow, KeyCode.W };
+        public static readonly KeyCode[] Down = { KeyCode.DownArrow, KeyCode.S };
+        public static readonly KeyCode[] Left = { KeyCode.LeftArrow, KeyCode.A };
+        public static readonly KeyCode[] Right = { KeyCode.RightArrow, KeyCode.D };
+
+        public static KeyCode[] For(RewiredActionType action) => action switch {
+            RewiredActionType.Confirm => Confirm,
+            RewiredActionType.Decline => Decline,
+            RewiredActionType.Func01 => Func01,
+            RewiredActionType.Func02 => Func02,
+            RewiredActionType.LeftUp => LeftUp,
+            RewiredActionType.RightUp => RightUp,
+            RewiredActionType.DPadUp => Up,
+            RewiredActionType.DPadDown => Down,
+            RewiredActionType.DPadLeft => Left,
+            RewiredActionType.DPadRight => Right,
+            _ => new KeyCode[0]
+        };
+
+        public static string Label(RewiredActionType action) => action switch {
+            RewiredActionType.DPadVertical => "W/S",
+            RewiredActionType.DPadHorizontal => "A/D",
+            RewiredActionType.DPadUp => "W",
+            RewiredActionType.DPadDown => "S",
+            RewiredActionType.DPadLeft => "A",
+            RewiredActionType.DPadRight => "D",
+            _ => For(action).Length > 0 ? For(action)[0].ToString() : action.ToString()
+        };
+
+        public static bool Pressed(KeyCode[] keys) => keys.Any(Input.GetKeyDown);
+
+        // Arrows always; the letter keys only when letters are not typed as text.
+        public static bool Held(KeyCode[] keys, bool letters) =>
+            keys.Any(k => Input.GetKey(k) && (letters || k < KeyCode.A || k > KeyCode.Z));
+    }
 
     // Help text of the gamepad menu and button icons inside menu texts.
     // Texts mark buttons as {A} {B} {X} {Y} {LB} {RB} {UP} {DOWN} {LEFT} {RIGHT} {L5};
@@ -75,13 +121,15 @@ namespace BuffIt2TheLimit {
         }
 
         public static string Button(RewiredActionType action) {
+            if (PadSettings.KeyboardMode)
+                return Letters(PadKeys.Label(action));
             Resolve();
             if (asset != null)
                 return $"<size=135%><sprite name=\"{prefix}{action}\"></size>";
             return Letters(Fallback(action));
         }
 
-        private static string Letters(string text) => $"<b><color=#E8C46A>[{text}]</color></b>";
+        private static string Letters(string text) => $"<b><color={PadTheme.Accent}>[{text}]</color></b>";
 
         private static string Fallback(RewiredActionType action) => action switch {
             RewiredActionType.Confirm => "A",
@@ -93,12 +141,18 @@ namespace BuffIt2TheLimit {
             RewiredActionType.DPadUp => "↑",
             RewiredActionType.DPadDown => "↓",
             RewiredActionType.DPadLeft => "←",
-            RewiredActionType.DPadRight => "→",
+            RewiredActionType.DPadRight => "›",
             _ => action.ToString()
         };
 
         // Replaces button and group tokens; call before string.Format, the result has no braces.
+        // Single-line texts may hold both variants as "gamepad text@kb keyboard text".
         public static string Tokens(string text) {
+            if (!string.IsNullOrEmpty(text) && text.IndexOf('\n') < 0) {
+                int split = text.IndexOf("@kb ", StringComparison.Ordinal);
+                if (split >= 0)
+                    text = PadSettings.KeyboardMode ? text.Substring(split + 4) : text.Substring(0, split);
+            }
             if (string.IsNullOrEmpty(text) || text.IndexOf('{') < 0)
                 return text;
             return Token.Replace(text, m => m.Groups[1].Value switch {
@@ -112,7 +166,7 @@ namespace BuffIt2TheLimit {
                 "DOWN" => Button(RewiredActionType.DPadDown),
                 "LEFT" => Button(RewiredActionType.DPadLeft),
                 "RIGHT" => Button(RewiredActionType.DPadRight),
-                "L5" => Letters("pad.key.menu".i8()),
+                "L5" => Letters(MenuKeyName),
                 "G1" => PadGroups.Name(BuffGroup.Long),
                 "G2" => PadGroups.Name(BuffGroup.Quick),
                 "G3" => PadGroups.Name(BuffGroup.Important),
@@ -120,7 +174,28 @@ namespace BuffIt2TheLimit {
             });
         }
 
+        // In keyboard mode the menu key is shown as the key itself.
+        private static string MenuKeyName {
+            get {
+                if (!PadSettings.KeyboardMode)
+                    return "pad.key.menu".i8();
+                var key = GlobalBubbleBuffer.Instance?.SpellbookController?.state?.GetOpenBuffMenuShortcut() ?? ShortcutBinding.None;
+                return key.IsNone ? "pad.key.menu".i8() : key.ToDisplayString();
+            }
+        }
+
+        // Lines that start with "@pad " are shown only with gamepad hints, "@kb " only with keyboard hints.
+        private static string ForMode(string line) {
+            bool keyboard = PadSettings.KeyboardMode;
+            if (line.StartsWith("@pad "))
+                return keyboard ? null : line.Substring(5);
+            if (line.StartsWith("@kb "))
+                return keyboard ? line.Substring(4) : null;
+            return line;
+        }
+
         // Rich text of the help page; section starts (indices in the result) go to sections.
+        // Offsets are in pixels: the Kingmaker TextMeshPro derives "em" from the font's tab width, near zero for the book font.
         public static string Build(List<int> sections) {
             var body = "pad.help.body".i8();
 #if KINGMAKER
@@ -133,25 +208,32 @@ namespace BuffIt2TheLimit {
             body = body.Replace("##SRC##", source + "\n" + "pad.help.src.end".i8());
             var sb = new StringBuilder();
             foreach (var raw in body.Split('\n')) {
-                var line = Bold.Replace(raw.TrimEnd('\r'), "<b>$1</b>");
+                var shown = ForMode(raw.TrimEnd('\r'));
+                if (shown == null)
+                    continue;
+                var line = Bold.Replace(shown, "<b>$1</b>");
                 if (line.StartsWith("# ")) {
                     if (sb.Length > 0)
                         sb.Append("<size=45%>\n</size>");
-                    sb.Append("<size=125%><b><color=#E8C46A>");
+                    sb.Append($"<size=125%><b><color={PadTheme.Heading}>");
                     sections.Add(sb.Length);
-                    sb.Append(Tokens(line.Substring(2))).Append("</color></b></size>\n");
+                    sb.Append(PadTheme.Initial(Tokens(line.Substring(2)))).Append("</color></b></size>\n");
+                    // Room for the ornamental rule the menu lays under every heading.
+                    if (PadTheme.HasSeparator)
+                        sb.Append("<size=70%>\n</size>");
+                    continue;
                 } else if (line.StartsWith("## ")) {
-                    sb.Append("<size=40%>\n</size><b><color=#D8C08A>").Append(Tokens(line.Substring(3))).Append("</color></b>\n");
+                    sb.Append($"<size=40%>\n</size><b><color={PadTheme.Sub}>").Append(Tokens(line.Substring(3))).Append("</color></b>\n");
                 } else if (line.StartsWith("- ")) {
-                    sb.Append("  •<indent=1.8em>").Append(Tokens(line.Substring(2))).Append("</indent>\n");
+                    sb.Append($"<pos=10><color={PadTheme.Heading}>•</color><pos=32><indent=32>").Append(Tokens(line.Substring(2))).Append("</indent>\n");
                 } else if (line.StartsWith("> ")) {
-                    sb.Append("<indent=1.2em><color=#9FC3D9><i>").Append(Tokens(line.Substring(2))).Append("</i></color></indent>\n");
+                    sb.Append($"<indent=24><color={PadTheme.Note}><i>").Append(Tokens(line.Substring(2))).Append("</i></color></indent>\n");
                 } else if (Numbered.IsMatch(line)) {
                     var m = Numbered.Match(line);
-                    sb.Append($"  <color=#E8C46A><b>{m.Groups[1].Value}.</b></color><indent=2em>").Append(Tokens(m.Groups[2].Value)).Append("</indent>\n");
+                    sb.Append($"<pos=8><color={PadTheme.Heading}><b>{m.Groups[1].Value}.</b></color><pos=36><indent=36>").Append(Tokens(m.Groups[2].Value)).Append("</indent>\n");
                 } else if (line.StartsWith("{") && line.Contains("|")) {
                     int bar = line.IndexOf('|');
-                    sb.Append(Tokens(line.Substring(0, bar).Trim())).Append("<indent=3.6em>")
+                    sb.Append(Tokens(line.Substring(0, bar).Trim())).Append("<pos=96><indent=96>")
                         .Append(Tokens(line.Substring(bar + 1).Trim())).Append("</indent>\n");
                 } else {
                     sb.Append(Tokens(line)).Append('\n');

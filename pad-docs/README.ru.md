@@ -8,7 +8,7 @@
 
 1. Установить Unity Mod Manager для игры.
 2. Собрать мод (см. [Сборка](#сборка)) или взять релиз.
-3. WotR: положить `BuffIt2TheLimit.dll` и `Info.json` в `<игра>/mods/BuffIt2TheLimit/`. В UMM мод называется «Buff It 2 The Limit (Pad)». Он заменяет оригинальный мод: у них один id и одни файлы настроек.
+3. WotR: положить `BuffIt2TheLimit.dll` и `Info.json` в `<игра>/Mods/BuffIt2TheLimit/` (в справке для Steam Deck — `mods`; Proton регистр не различает). В UMM мод называется «Buff It 2 The Limit (Pad)». Он заменяет оригинальный мод: у них один id и одни файлы настроек. BubbleBuffs он тоже заменяет, но его настройки (`bubblebuff-*.json`) не читает.
 4. Kingmaker: положить `PadBuffsKingmaker.dll` и `Info.json` в `<игра>/Mods/PadBuffsKingmaker/`.
 
 ## Открытие меню
@@ -198,6 +198,10 @@ scp -r "deck@steamdeck.local:/home/deck/.local/share/Steam/steamapps/common/Path
 	</PropertyGroup>
 </Project>
 ```
+
+`GamePath.props` не хранится в git: скопированный с другой машины (вместе с рабочей копией или папками `GameInstall*`) указывает на путь той машины, и сборка падает без сборок игры. После копирования поправьте `WrathInstallDir`.
+
+На Windows один раз выполнить в клоне `git config core.filemode false`: в Windows нет признака исполняемого файла, и без этого git показывает все `.sh` изменёнными. При копировании `.git` с другой машины возвращается старое значение.
 
 Проект Kingmaker берёт `GameInstallKM/`, если в `GamePath.props` не задан `KingmakerInstallDir`. После удачной сборки WotR проект ещё копирует мод в `$(WrathInstallDir)/Mods/` — с `GameInstall/` это безвредно.
 

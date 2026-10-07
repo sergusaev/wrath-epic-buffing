@@ -184,6 +184,7 @@ namespace BuffIt2TheLimit {
             state = new(save);
             Executor = new(state);
             Main.Log($"[PAD] buff state for game {gameId}, {save.Buffs.Count} saved buffs");
+            PadBar.Refresh();
         }
 
         internal void Execute(BuffGroup group) {
