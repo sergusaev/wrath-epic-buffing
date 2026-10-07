@@ -2,6 +2,7 @@
 >
 > - Branch `gamepad` (default) holds the fork; branch `master` mirrors the original and is kept in sync with it.
 > - Gamepad menu guide, Kingmaker port, building and fork maintenance: [pad-docs/README.md](pad-docs/README.md) ([на русском](pad-docs/README.ru.md)).
+> - Installing on the Steam Deck from scratch (Unity Mod Manager, Steam Input layout): [Steam Deck guide](https://github.com/sergusaev/pathfinder-mods/blob/main/docs/steam-deck.md). Ready zips: [Releases](https://github.com/sergusaev/wrath-epic-buffing/releases).
 > - Everything below is the original README. Issues with the gamepad menu belong here, not to the original mod.
 
 # Buff It 2 The Limit

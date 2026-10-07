@@ -16,7 +16,9 @@ This fork of [Buff It 2 The Limit](https://github.com/Gh05d/wrath-epic-buffing) 
 The menu opens with the menu key from the mod settings:
 
 - **Kingmaker:** F7 by default (written into a new settings file).
-- **WotR:** the key the original mod calls "open buff menu". Set it in the PC spellbook screen in mouse and keyboard mode, or write it into the settings file (`OpenBuffMenuKey`, see [Files](#files)).
+- **WotR:** the key the original mod calls "open buff menu". Set it in the PC spellbook screen in mouse and keyboard mode, or write it into the settings file (`OpenBuffMenuKey`, see [Files](#files)); the [Steam Deck guide](https://github.com/sergusaev/pathfinder-mods/blob/main/docs/steam-deck.md#3-installing-the-mods) has a ready command that sets F7.
+
+**Steam Deck from scratch** — Unity Mod Manager for both games, `startup.json`, the whole Steam Input layout (UMM window on R4, this menu on L5, mouse on the right trackpad): [pathfinder-mods/docs/steam-deck.md](https://github.com/sergusaev/pathfinder-mods/blob/main/docs/steam-deck.md).
 
 A gamepad has no F keys, so bind the key to a free button in Steam Input. On the Steam Deck: Controller settings → Edit layout → Back buttons → L5 → keyboard key F7, a single regular press without delays. The mod recognises the gestures itself (`PadGestures.cs`):
 
