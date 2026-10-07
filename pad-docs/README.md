@@ -182,6 +182,15 @@ DECK=deck@steamdeck.local ./deploy.sh --bind-menu  # WotR, plus menu = F7, Long 
 
 `WOTR_DIR` and `KINGMAKER_DIR` override the game folders on the deck. New strings go into all five `Config/*.json`; a key missing from `en_GB.json` crashes the game.
 
+### Releasing
+
+```bash
+./release.sh wotr                  # build Release and pack dist/BuffIt2TheLimit-Pad-<version>-pad.<N>.zip
+./release.sh kingmaker --publish   # pack dist/PadBuffsKingmaker-<version>.zip, tag kingmaker-v<version>, publish
+```
+
+WotR releases are numbered `v<upstream version>-pad.<N>`, where N is the next unreleased number; the Kingmaker version comes from `BuffIt2TheLimit.Kingmaker/Info.json` and must be bumped before publishing. `--publish` needs the [GitHub CLI](https://cli.github.com/), a clean tree and `gamepad` pushed; `--notes FILE` replaces the default release notes. `dist/` is not tracked by git.
+
 ## Pitfalls found along the way
 
 - **L3+R3 is taken:** in WotR it opens the bug report window.

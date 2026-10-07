@@ -182,6 +182,15 @@ DECK=deck@steamdeck.local ./deploy.sh --bind-menu  # WotR, плюс меню = F
 
 `WOTR_DIR` и `KINGMAKER_DIR` переопределяют папки игр на деке. Новые строки добавлять во все пять `Config/*.json`; без ключа в `en_GB.json` игра падает.
 
+### Выпуск релиза
+
+```bash
+./release.sh wotr                  # собрать Release и упаковать dist/BuffIt2TheLimit-Pad-<версия>-pad.<N>.zip
+./release.sh kingmaker --publish   # упаковать dist/PadBuffsKingmaker-<версия>.zip, тег kingmaker-v<версия>, публикация
+```
+
+Релизы WotR нумеруются `v<версия оригинала>-pad.<N>`, где N — следующий невыпущенный номер; версия Kingmaker берётся из `BuffIt2TheLimit.Kingmaker/Info.json`, перед публикацией её нужно поднять. Для `--publish` нужны [GitHub CLI](https://cli.github.com/), чистое дерево и выложенная `gamepad`; `--notes FILE` заменяет стандартное описание. Папка `dist/` в git не попадает.
+
 ## Грабли, найденные по пути
 
 - **L3+R3 занято:** в WotR это окно отчёта об ошибке.
