@@ -35,6 +35,7 @@
     <EmbeddedResource Include="Config\en_GB.json" />
     <EmbeddedResource Include="Config\Fixes.json" />
     <EmbeddedResource Include="Assets\card\card_buffs.png" LogicalName="BuffIt2TheLimit.card_buffs.png" />
+    <EmbeddedResource Include="Assets\card\card_buffs_small.png" LogicalName="BuffIt2TheLimit.card_buffs_small.png" />
     <None Include="..\.editorconfig">
       <Link>.editorconfig</Link>
     </None>
