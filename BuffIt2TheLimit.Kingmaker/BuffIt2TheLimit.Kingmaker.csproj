@@ -61,6 +61,8 @@
 		<EmbeddedResource Include="..\BuffIt2TheLimit\Assets\icons\open_buffs_normal.png" LogicalName="BuffIt2TheLimit.icons.open_buffs_normal.png" />
 		<EmbeddedResource Include="..\BuffIt2TheLimit\Assets\icons\open_buffs_hover.png" LogicalName="BuffIt2TheLimit.icons.open_buffs_hover.png" />
 		<EmbeddedResource Include="..\BuffIt2TheLimit\Assets\icons\open_buffs_down.png" LogicalName="BuffIt2TheLimit.icons.open_buffs_down.png" />
+		<EmbeddedResource Include="..\BuffIt2TheLimit\Assets\card\card_buffs.png" LogicalName="BuffIt2TheLimit.card_buffs.png" />
+		<EmbeddedResource Include="..\BuffIt2TheLimit\Assets\card\card_buffs_small.png" LogicalName="BuffIt2TheLimit.card_buffs_small.png" />
 		<None Include="Info.json">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>

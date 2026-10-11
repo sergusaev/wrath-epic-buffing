@@ -24,6 +24,15 @@ namespace BuffIt2TheLimit {
             ModPath = modEntry.Path;
             Log("LOADING Pad Buffs for Kingmaker");
             Language.Initialise();
+            MenuCards.Cards.Add(new MenuCard {
+                Id = "PadBuffs",
+                Title = () => "pad.title".i8(),
+                Open = PadQuickMenu.Toggle,
+                BigResource = "BuffIt2TheLimit.card_buffs.png",
+                SmallResource = "BuffIt2TheLimit.card_buffs_small.png",
+                Tint = new Color32(0xA8, 0x58, 0x9E, 255),
+                Menus = new[] { typeof(Kingmaker.UI._ConsoleUI.InGameMenu.InGameMenuView) }
+            });
             harmony = new Harmony(modEntry.Info.Id);
             harmony.PatchAll();
             GlobalBubbleBuffer.Install();
@@ -35,6 +44,7 @@ namespace BuffIt2TheLimit {
         static void OnUpdate(UnityModManager.ModEntry modEntry, float delta) {
             try {
                 GlobalBubbleBuffer.Instance?.EnsureController();
+                MenuCards.Tick();
             } catch (Exception ex) {
                 Error(ex, "OnUpdate");
             }

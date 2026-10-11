@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 105 133" width="420" height="532"><defs><mask id="m" maskUnits="userSpaceOnUse" x="0" y="0" width="105" height="133"><rect width="105" height="133" fill="#000"/><g stroke-linejoin="round" stroke-linecap="round" transform="translate(44 70) scale(0.40) translate(-250 -281)">
+<rect x="176" y="156" width="40" height="80" rx="18" fill="#fff" stroke="#000" stroke-width="5"/><path d="M184 182H208" stroke="#000" stroke-width="4" stroke-linecap="round"/><rect x="218" y="142" width="40" height="94" rx="18" fill="#fff" stroke="#000" stroke-width="5"/><path d="M226 168H250" stroke="#000" stroke-width="4" stroke-linecap="round"/><rect x="260" y="146" width="40" height="90" rx="18" fill="#fff" stroke="#000" stroke-width="5"/><path d="M268 172H292" stroke="#000" stroke-width="4" stroke-linecap="round"/><rect x="302" y="162" width="40" height="74" rx="18" fill="#fff" stroke="#000" stroke-width="5"/><path d="M310 188H334" stroke="#000" stroke-width="4" stroke-linecap="round"/>
+<path d="M168 226H344V318C344 340 330 352 312 352H200C182 352 168 340 168 318Z" fill="#fff" stroke="#000" stroke-width="5"/>
+<path d="M156 262C156 240 180 232 206 240L286 270C304 277 302 304 280 306L192 316C168 318 156 292 156 262Z" fill="#fff" stroke="#000" stroke-width="5"/>
+<path d="M176 258L270 288" stroke="#000" stroke-width="4"/>
+<path d="M186 352H326L338 420H174Z" fill="#fff" stroke="#000" stroke-width="5"/>
+<path d="M174 380H338" stroke="#000" stroke-width="5"/>
+<circle cx="204" cy="400" r="6"/><circle cx="256" cy="400" r="6"/><circle cx="308" cy="400" r="6"/>
+</g><polygon points="96.0,13.0 97.8,20.2 105.0,22.0 97.8,23.8 96.0,31.0 94.2,23.8 87.0,22.0 94.2,20.2" fill="#fff"/></mask></defs><rect width="105" height="133" fill="#d8b06a" mask="url(#m)"/></svg>
