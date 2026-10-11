@@ -137,6 +137,11 @@ namespace BuffIt2TheLimit {
         }
 
         static void OnUpdate(UnityModManager.ModEntry modEntry, float delta) {
+            try {
+                PadMenuCard.Tick();
+            } catch (Exception ex) {
+                Error(ex, "OnUpdate");
+            }
 
 #if DEBUG
             if (Input.GetKeyDown(KeyCode.I) && (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))) {
