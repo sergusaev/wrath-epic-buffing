@@ -38,6 +38,8 @@ namespace BuffIt2TheLimit {
 
         private RectTransform row;
         private GameObject tipBox;
+        private bool tipPaper;
+        private CanvasGroup rowGroup;
         private TextMeshProUGUI tipTitle;
         private TextMeshProUGUI tipText;
         private RectTransform tipList;
@@ -104,9 +106,16 @@ namespace BuffIt2TheLimit {
             layout.childForceExpandHeight = false;
             rowGo.AddComponent<ContentSizeFitter>().horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
             rowGo.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            rowGroup = rowGo.AddComponent<CanvasGroup>();
+            MakeTip(transform);
+        }
 
+        // The tooltip on the game's parchment; made again once the parchment is loaded, if it was made before.
+        private void MakeTip(Transform parent) {
+            tipPaper = PadTheme.Paper;
+            font = PadTheme.Font;
             tipBox = new GameObject("Tip", typeof(RectTransform));
-            tipBox.transform.SetParent(transform, false);
+            tipBox.transform.SetParent(parent, false);
             var tipRect = (RectTransform)tipBox.transform;
             tipRect.anchorMin = tipRect.anchorMax = tipRect.pivot = Vector2.zero;
             var tipBg = tipBox.AddComponent<Image>();
@@ -220,6 +229,8 @@ namespace BuffIt2TheLimit {
             image.sprite = normal ?? source;
             image.preserveAspect = true;
             var button = go.AddComponent<Button>();
+            // Not a keyboard target: a clicked button would stay selected, lit, and move with the arrow keys.
+            button.navigation = new Navigation { mode = Navigation.Mode.None };
             button.transition = Selectable.Transition.SpriteSwap;
             button.spriteState = normal != null
                 ? new SpriteState {
@@ -275,6 +286,11 @@ namespace BuffIt2TheLimit {
         }
 
         private void ShowTip(string title, string text, List<BubbleBuff> buffs, RectTransform over) {
+            if (tipPaper != PadTheme.Paper) {
+                var parent = tipBox.transform.parent;
+                DestroyImmediate(tipBox);
+                MakeTip(parent);
+            }
             tipTitle.text = PadTheme.Initial(title);
             tipText.text = text;
             // Gone at once, so the tooltip is measured without the previous group's lines.
@@ -344,13 +360,22 @@ namespace BuffIt2TheLimit {
                 bool show = pad.QuickCastBar && game != null && !game.IsControllerGamepad && State != null
                     && game.RootUiContext != null && !game.RootUiContext.IsMainMenu
                     && !Kingmaker.EntitySystem.Persistence.LoadingProcess.Instance.IsLoadingInProcess
-                    && (game.CurrentMode == GameModeType.Default || game.CurrentMode == GameModeType.Pause)
-                    && !game.CutsceneLock && !PadQuickMenu.IsOpen;
+                    && (game.CurrentMode == GameModeType.Default || game.CurrentMode == GameModeType.Pause
+                        // The Esc menu keeps the HUD in view; on the global map there is no bar.
+                        || game.CurrentMode == GameModeType.EscMode && FindAnchor() != null)
+                    && !game.CutsceneLock;
                 if (show && State != builtFor)
                     Fill();
                 if (row.gameObject.activeSelf != show) {
                     row.gameObject.SetActive(show);
                     if (!show)
+                        HideTip();
+                }
+                // Under the Esc menu the bar is seen, as the game's buttons, but not pressed.
+                bool live = game.CurrentMode != GameModeType.EscMode;
+                if (rowGroup.blocksRaycasts != live) {
+                    rowGroup.blocksRaycasts = rowGroup.interactable = live;
+                    if (!live)
                         HideTip();
                 }
                 if (show)
@@ -393,11 +418,7 @@ namespace BuffIt2TheLimit {
         // The bar sits in the bottom left corner on top of the game's two rows of menu buttons (inventory,
         // map, formation and the rest), measured on screen so it follows the resolution and the UI scale.
         private Vector2 BasePosition() {
-            if (anchorBlock == null && Time.unscaledTime >= nextAnchorSearch) {
-                nextAnchorSearch = Time.unscaledTime + 1f;
-                anchorBlock = GameObject.Find("Menu_Buttons48px")?.transform as RectTransform;
-            }
-            if (anchorBlock == null || !anchorBlock.gameObject.activeInHierarchy)
+            if (FindAnchor() == null)
                 return FallbackPos;
             var canvas = anchorBlock.GetComponentInParent<Canvas>()?.rootCanvas;
             var cam = canvas == null || canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
@@ -421,6 +442,15 @@ namespace BuffIt2TheLimit {
             // Right on top of the game's sheet, from the screen edge as the sheet is.
             var pos = local - root.rect.min;
             return new Vector2(Mathf.Max(pos.x, 0f), pos.y - FrameSink);
+        }
+
+        // The game's menu buttons of the local map, when they are in view.
+        private RectTransform FindAnchor() {
+            if (anchorBlock == null && Time.unscaledTime >= nextAnchorSearch) {
+                nextAnchorSearch = Time.unscaledTime + 1f;
+                anchorBlock = GameObject.Find("Menu_Buttons48px")?.transform as RectTransform;
+            }
+            return anchorBlock != null && anchorBlock.gameObject.activeInHierarchy ? anchorBlock : null;
         }
 
         // The icons are embedded in the DLL, so the release zip stays a DLL and Info.json.
@@ -459,10 +489,20 @@ namespace BuffIt2TheLimit {
                 Left?.Invoke();
             else if (eventData.button == PointerEventData.InputButton.Right)
                 Right?.Invoke();
+            Deselect();
         }
 
         public void OnPointerEnter(PointerEventData eventData) => Enter?.Invoke();
 
-        public void OnPointerExit(PointerEventData eventData) => Exit?.Invoke();
+        public void OnPointerExit(PointerEventData eventData) {
+            Deselect();
+            Exit?.Invoke();
+        }
+
+        private void Deselect() {
+            var events = EventSystem.current;
+            if (events != null && events.currentSelectedGameObject == gameObject)
+                events.SetSelectedGameObject(null);
+        }
     }
 }
