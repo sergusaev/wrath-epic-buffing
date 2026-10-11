@@ -23,10 +23,11 @@ namespace BuffIt2TheLimit {
         private static Sprite big;
         private static Sprite small;
         private static bool dumped;
+        private static bool stacked;
         private static IngameMenuCardsConsoleView pendingMenu;
         private static float pendingAt = -1;
 
-        // The menu is bound: add the card before Rest and rebuild the carousel and the navigation with it.
+        // The menu is bound: add the card after Rest and rebuild the carousel and the navigation with it.
         internal static void Bound(IngameMenuCardsConsoleView view) {
             var rest = view.m_RestView;
             if (rest == null)
@@ -43,13 +44,28 @@ namespace BuffIt2TheLimit {
             } else {
                 card.Initialize("pad.title".i8());
                 card.Bind(() => Select(view), true);
-                int index = list.IndexOf(rest);
-                list.Insert(index < 0 ? list.Count : index, card);
+                // The last card of the fan, laid over or under the card before it as the game's cards lie on each other.
+                var previous = list.LastOrDefault();
+                list.Add(card);
+                if (previous != null && list.Count > 2)
+                    Stack(card.transform, previous.transform, list[1].transform.GetSiblingIndex() > list[0].transform.GetSiblingIndex());
             }
             view.m_CartCollection.Initialize(list);
             view.m_NavigationBehaviour.SetEntitiesHorizontal(list);
             view.m_CartCollection.FocusOnFirstEntity();
             view.m_NavigationBehaviour.FocusOnFirstValidEntity();
+        }
+
+        // Cards are drawn in the order of the hierarchy, a later one over an earlier one: right after the card before it
+        // when the next card lies over the one before, right before it when under.
+        private static void Stack(Transform card, Transform previous, bool overPrevious) {
+            card.SetAsLastSibling();
+            int index = previous.GetSiblingIndex();
+            card.SetSiblingIndex(overPrevious ? index + 1 : index);
+            if (!stacked) {
+                stacked = true;
+                Main.Log($"[PAD] menu card laid {(overPrevious ? "over" : "under")} {previous.name}");
+            }
         }
 
         private static InGameMenuCardEntityConsoleView Create(InGameMenuCardEntityConsoleView rest) {

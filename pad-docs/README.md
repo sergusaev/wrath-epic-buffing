@@ -17,7 +17,7 @@ The menu opens with the menu key from the mod settings:
 
 - **Kingmaker:** F7 by default (written into a new settings file).
 - **WotR:** the key the original mod calls "open buff menu". Set it in the PC spellbook screen in mouse and keyboard mode, or write it into the settings file (`OpenBuffMenuKey`, see [Files](#files)); the [Steam Deck guide](https://github.com/sergusaev/pathfinder-mods/blob/main/docs/steam-deck.md#3-installing-the-mods) has a ready command that sets F7.
-- **Gamepad menu of the game:** a "Buffs" card before Rest, in the style of the game's cards (in WotR not on the global map of the crusade); the menu opens once the game's menu closes on it.
+- **Gamepad menu of the game:** a "Buffs" card after the game's cards, in the style of the game's cards (in WotR not on the global map of the crusade); the menu opens once the game's menu closes on it.
 - **Mouse and keyboard:** also the last button of the quick cast bar.
 
 **Steam Deck from scratch** — Unity Mod Manager for both games, `startup.json`, the whole Steam Input layout (UMM window on R4, this menu on L5, mouse on the right trackpad): [pathfinder-mods/docs/steam-deck.md](https://github.com/sergusaev/pathfinder-mods/blob/main/docs/steam-deck.md).

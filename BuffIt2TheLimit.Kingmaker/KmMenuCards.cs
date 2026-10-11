@@ -105,9 +105,13 @@ namespace BuffIt2TheLimit
                     SetTint(go.transform, "SmallIcon", card.Tint);
                     var cardView = go.GetComponent<InGameMenuEntityView>();
                     s_Views[Key(view, card)] = cardView;
+                    // After the game's cards (and the cards of other mods added before), laid over or under the card
+                    // before it as the game's cards lie on each other.
                     var list = new List<ICartCollectionEntity>(Traverse.Create(collection).Field("m_CartList").GetValue<List<ICartCollectionEntity>>());
-                    int index = list.IndexOf(template);
-                    list.Insert(index < 0 ? list.Count : index, cardView);
+                    var previous = list.Count > 0 ? list[list.Count - 1] as Component : null;
+                    list.Add(cardView);
+                    if (previous != null && list.Count > 2 && list[0] is Component first && list[1] is Component second)
+                        Stack(go.transform, previous.transform, second.transform.GetSiblingIndex() > first.transform.GetSiblingIndex());
                     collection.Initialize(list);
                     Main.Log("menu card " + card.Id + " added to " + view.GetType().Name + ", " + list.Count + " cards");
                 }
@@ -118,12 +122,21 @@ namespace BuffIt2TheLimit
             }
         }
 
-        // The menu opens: bind the cards and add them to the navigation next to the Rest card.
+        // Cards are drawn in the order of the hierarchy, a later one over an earlier one: right after the card before it
+        // when the next card lies over the one before, right before it when under.
+        static void Stack(Transform card, Transform previous, bool overPrevious)
+        {
+            card.SetAsLastSibling();
+            int index = previous.GetSiblingIndex();
+            card.SetSiblingIndex(overPrevious ? index + 1 : index);
+            Main.Log("menu card laid " + (overPrevious ? "over " : "under ") + previous.name);
+        }
+
+        // The menu opens: bind the cards and add them to the navigation after the game's cards.
         internal static void Bound(BaseGameMenuView view, List<List<IConsoleMultiNavigationEntity>> rows, InGameMenuVM viewModel)
         {
             try
             {
-                var template = Traverse.Create(view).Field("m_RestView").GetValue<InGameMenuEntityView>();
                 foreach (var card in Cards)
                 {
                     string key = Key(view, card);
@@ -138,8 +151,7 @@ namespace BuffIt2TheLimit
                     cardView.Bind(vm);
                     Main.Log("menu card " + card.Id + " bound, row " + (rows == null ? -1 : rows.Count));
                     if (rows == null || rows.Count == 0) continue;
-                    int index = rows[0].IndexOf(template);
-                    rows[0].Insert(index < 0 ? rows[0].Count : index, cardView);
+                    rows[0].Add(cardView);
                 }
             }
             catch (Exception e)
