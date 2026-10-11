@@ -247,6 +247,7 @@ namespace BuffIt2TheLimit {
             instance.recalcTried = false;
             instance.overlay.SetActive(true);
             instance.gameObject.SetActive(true);
+            PadPointer.ResetMouse();
             instance.PushInput();
             instance.BlockGameKeys();
             instance.ShowPage(Page.Main);
@@ -260,6 +261,9 @@ namespace BuffIt2TheLimit {
             UnblockGameKeys();
             gameObject.SetActive(false);
             overlay.SetActive(false);
+#if KINGMAKER
+            KmVirtualCursor.Restore();
+#endif
             PadBar.Refresh();
         }
 
@@ -299,6 +303,7 @@ namespace BuffIt2TheLimit {
 
         private void Update() {
             try {
+                PadPointer.WatchMouse();
                 PollButtons();
                 PollMouse();
                 if (captureDone != null) {
@@ -353,6 +358,9 @@ namespace BuffIt2TheLimit {
             }
             layer.AddAxis2D((_, v) => MarkStick(v), (int)RewiredActionType.LeftStickX, (int)RewiredActionType.LeftStickY, false);
             layerHandle = pad.PushLayer(layer);
+#if KINGMAKER
+            KmVirtualCursor.Hide();
+#endif
         }
 
         private static readonly RewiredActionType[] MenuButtons = {
@@ -2736,6 +2744,23 @@ namespace BuffIt2TheLimit {
 
         public static PadPointer Over { get; private set; }
 
+        // Rows light up under the pointer only once the real mouse moved while the menu is open: a cursor resting
+        // over the menu (the Steam Deck's trackpad mouse) would otherwise show a second selection apart from the menu's own.
+        public static bool MouseUsed { get; private set; }
+        private static Vector3 mouseAt;
+
+        public static void ResetMouse() {
+            MouseUsed = false;
+            mouseAt = Input.mousePosition;
+        }
+
+        public static void WatchMouse() {
+            if (MouseUsed || (Input.mousePosition - mouseAt).sqrMagnitude <= 4f)
+                return;
+            MouseUsed = true;
+            Over?.Refresh();
+        }
+
         public void Mark(Graphic graphic, Color hover) {
             mark = graphic;
             markColor = graphic.color;
@@ -2770,7 +2795,7 @@ namespace BuffIt2TheLimit {
 
         // Rows show other items after a scroll, so the tint is checked again.
         public void Refresh() {
-            bool lit = over && (Live == null || Live());
+            bool lit = over && MouseUsed && (Live == null || Live());
             if (Tint != null)
                 Tint.enabled = lit;
             if (mark != null)
