@@ -41,6 +41,7 @@
 		<Compile Include="..\BuffIt2TheLimit\Extensions\ExtentionMethods.cs" />
 		<Compile Include="..\BuffIt2TheLimit\CoreTypes.cs" />
 		<Compile Include="..\BuffIt2TheLimit\Config\ModSettings.cs" />
+		<Compile Include="..\BuffIt2TheLimit\ModToggleLock.cs" />
 		<Compile Include="*.cs" />
 	</ItemGroup>
 	<ItemGroup>
