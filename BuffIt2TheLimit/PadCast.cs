@@ -8,67 +8,9 @@ using UnityEngine.UI;
 
 namespace BuffIt2TheLimit {
 
-    // Gestures on the menu key, in both control modes; they can be switched off in the menu settings.
-    // Steam Input sends the key down on press and up on release, so timing is measured here instead
-    // of with Steam activators (a Steam long press also fires the regular press, double press never arrived).
-    //   tap         → open/close the menu (after the double-tap window)
-    //   hold 0.6 s  → apply Long
-    //   double tap  → apply Important
-    internal static class PadGestures {
+    // A group cast started outside the menu (the quick cast bar): the result pops up as for a menu cast.
+    internal static class PadCast {
 
-        private const float HoldTime = 0.6f;
-        private const float DoubleTapWindow = 0.35f;
-
-        private static float downAt = -1f;
-        private static bool holdFired;
-        private static bool tapPending;
-        private static float tapDeadline;
-
-        public static void Tick(ShortcutBinding key) {
-            if (key.IsNone)
-                return;
-            // Without gestures the key only opens and closes the menu, at once.
-            if (!PadSettings.Current.Gestures) {
-                tapPending = false;
-                downAt = -1f;
-                if (key.IsPressed())
-                    PadQuickMenu.Toggle();
-                return;
-            }
-            float now = Time.unscaledTime;
-
-            if (key.IsPressed()) {
-                if (tapPending && now <= tapDeadline) {
-                    tapPending = false;
-                    downAt = -1f;
-                    Apply(BuffGroup.Important, "double");
-                    return;
-                }
-                downAt = now;
-                holdFired = false;
-            }
-
-            if (downAt >= 0f) {
-                if (!holdFired && Input.GetKey(key.Key) && now - downAt >= HoldTime) {
-                    holdFired = true;
-                    Apply(BuffGroup.Long, "hold");
-                }
-                if (Input.GetKeyUp(key.Key) || !Input.GetKey(key.Key)) {
-                    if (!holdFired) {
-                        tapPending = true;
-                        tapDeadline = now + DoubleTapWindow;
-                    }
-                    downAt = -1f;
-                }
-            }
-
-            if (tapPending && now > tapDeadline) {
-                tapPending = false;
-                PadQuickMenu.Toggle();
-            }
-        }
-
-        // Gestures and the quick cast bar: the result shows in a pop-up as for a menu cast.
         internal static void Apply(BuffGroup group, string gesture) {
             Main.Log($"[PAD] {gesture} → {group}");
             int before = BuffExecutor.ScheduledRoutines;
@@ -76,7 +18,7 @@ namespace BuffIt2TheLimit {
             try {
                 GlobalBubbleBuffer.Execute(group);
             } catch (Exception ex) {
-                Main.Error(ex, "PadGestures.Apply");
+                Main.Error(ex, "PadCast.Apply");
             }
             string name = PadQuickMenu.GroupName(group);
             if (BuffExecutor.ScheduledRoutines == before)

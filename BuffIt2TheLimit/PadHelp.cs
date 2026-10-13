@@ -18,7 +18,8 @@ namespace BuffIt2TheLimit {
     // The game's own hotkeys are off while the menu is open, so these keys do not reach the game.
     internal static class PadKeys {
         public static readonly KeyCode[] Confirm = { KeyCode.E, KeyCode.Return, KeyCode.KeypadEnter, KeyCode.Space };
-        public static readonly KeyCode[] Decline = { KeyCode.Q, KeyCode.Escape, KeyCode.Backspace };
+        // Esc is not back: it opens the game's menu over the buff menu, as Start does.
+        public static readonly KeyCode[] Decline = { KeyCode.Q, KeyCode.Backspace };
         public static readonly KeyCode[] Func01 = { KeyCode.R };
         public static readonly KeyCode[] Func02 = { KeyCode.F };
         public static readonly KeyCode[] LeftUp = { KeyCode.X, KeyCode.PageUp };
@@ -60,7 +61,7 @@ namespace BuffIt2TheLimit {
     }
 
     // Help text of the buff menu and button icons inside menu texts.
-    // Texts mark buttons as {A} {B} {X} {Y} {LB} {RB} {UP} {DOWN} {LEFT} {RIGHT} {L5};
+    // Texts mark buttons as {A} {B} {X} {Y} {LB} {RB} {UP} {DOWN} {LEFT} {RIGHT};
     // they become sprites of the game's own sprite asset (the one its console tutorials use),
     // or bracketed letters when the asset is not found. Built-in group names are {G1} {G2} {G3}.
     // Help markup, one element per line: "# " section, "## " subheading, "- " bullet,
@@ -73,7 +74,7 @@ namespace BuffIt2TheLimit {
 
         private static readonly Regex Bold = new(@"\*\*(.+?)\*\*");
         private static readonly Regex Numbered = new(@"^(\d+)\.\s+(.*)$");
-        private static readonly Regex Token = new(@"\{(A|B|X|Y|LB|RB|UP|DOWN|LEFT|RIGHT|L5|G1|G2|G3)\}");
+        private static readonly Regex Token = new(@"\{(A|B|X|Y|LB|RB|UP|DOWN|LEFT|RIGHT|G1|G2|G3)\}");
 
         public static TMP_SpriteAsset IconAsset {
             get {
@@ -166,22 +167,11 @@ namespace BuffIt2TheLimit {
                 "DOWN" => Button(RewiredActionType.DPadDown),
                 "LEFT" => Button(RewiredActionType.DPadLeft),
                 "RIGHT" => Button(RewiredActionType.DPadRight),
-                "L5" => Letters(MenuKeyName),
                 "G1" => PadGroups.Name(BuffGroup.Long),
                 "G2" => PadGroups.Name(BuffGroup.Quick),
                 "G3" => PadGroups.Name(BuffGroup.Important),
                 _ => m.Value
             });
-        }
-
-        // In keyboard mode the menu key is shown as the key itself.
-        private static string MenuKeyName {
-            get {
-                if (!PadSettings.KeyboardMode)
-                    return "pad.key.menu".i8();
-                var key = GlobalBubbleBuffer.Instance?.SpellbookController?.state?.GetOpenBuffMenuShortcut() ?? ShortcutBinding.None;
-                return key.IsNone ? "pad.key.menu".i8() : key.ToDisplayString();
-            }
         }
 
         // Lines that start with "@pad " are shown only with gamepad hints, "@kb " only with keyboard hints.

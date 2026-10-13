@@ -188,9 +188,6 @@ namespace BuffIt2TheLimit {
                 }
             }
             save ??= new SavedBufferState { Version = 1 };
-            // L5 sends F7 through Steam Input; the menu has no other way to open in Kingmaker.
-            if (save.OpenBuffMenuKey.IsNone)
-                save.OpenBuffMenuKey = new ShortcutBinding(KeyCode.F7);
             state = new(save);
             Executor = new(state);
             Main.Log($"[PAD] buff state for game {gameId}, {save.Buffs.Count} saved buffs");

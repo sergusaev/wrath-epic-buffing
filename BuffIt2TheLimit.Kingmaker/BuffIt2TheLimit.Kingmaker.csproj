@@ -7,7 +7,7 @@
 		<TargetFramework>net48</TargetFramework>
 		<AssemblyName>PadBuffsKingmaker</AssemblyName>
 		<RootNamespace>BuffIt2TheLimit</RootNamespace>
-		<Version>0.3.1</Version>
+		<Version>0.4.0</Version>
 		<LangVersion>latest</LangVersion>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
@@ -31,17 +31,17 @@
 		<Compile Include="..\BuffIt2TheLimit\BuffExecutor.cs" />
 		<Compile Include="..\BuffIt2TheLimit\IBeneficialEffect.cs" />
 		<Compile Include="..\BuffIt2TheLimit\SaveState.cs" />
-		<Compile Include="..\BuffIt2TheLimit\ShortcutBinding.cs" />
 		<Compile Include="..\BuffIt2TheLimit\PadGroups.cs" />
 		<Compile Include="..\BuffIt2TheLimit\PadHelp.cs" />
 		<Compile Include="..\BuffIt2TheLimit\PadQuickMenu.cs" />
-		<Compile Include="..\BuffIt2TheLimit\PadGestures.cs" />
+		<Compile Include="..\BuffIt2TheLimit\PadCast.cs" />
 		<Compile Include="..\BuffIt2TheLimit\PadSettings.cs" />
 		<Compile Include="..\BuffIt2TheLimit\PadTheme.cs" />
 		<Compile Include="..\BuffIt2TheLimit\Extensions\ExtentionMethods.cs" />
 		<Compile Include="..\BuffIt2TheLimit\CoreTypes.cs" />
 		<Compile Include="..\BuffIt2TheLimit\Config\ModSettings.cs" />
 		<Compile Include="..\BuffIt2TheLimit\ModToggleLock.cs" />
+		<Compile Include="..\BuffIt2TheLimit\ModWindows.cs" />
 		<Compile Include="*.cs" />
 	</ItemGroup>
 	<ItemGroup>

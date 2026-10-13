@@ -39,28 +39,6 @@ namespace BuffIt2TheLimit {
         public const int BATCH_SIZE = 8;
         public const float DELAY = 0.05f;
 
-        // Shortcut capture state
-        public static bool CapturingActive = false;
-        private static bool padDiagLogged;
-        private static int padKeysLogged;
-        public static Action<ShortcutBinding> OnShortcutCaptured = null;
-
-        // Cached enum arrays to avoid per-frame allocation in Update()
-        private static readonly HashSet<KeyCode> ModifierKeys = new() {
-            KeyCode.LeftShift, KeyCode.RightShift,
-            KeyCode.LeftControl, KeyCode.RightControl,
-            KeyCode.LeftAlt, KeyCode.RightAlt,
-            KeyCode.LeftCommand, KeyCode.RightCommand,
-            KeyCode.LeftApple, KeyCode.RightApple,
-        };
-        // Keyboard keys plus the extra mouse buttons (thumb + side: Mouse3..Mouse6).
-        // LMB/RMB/MMB (Mouse0..Mouse2) and joystick buttons (>= Mouse6's successor) are
-        // excluded — LMB arms the rebind row and would self-capture; RMB/MMB are game controls.
-        private static readonly KeyCode[] BindableKeys = ((KeyCode[])Enum.GetValues(typeof(KeyCode)))
-            .Where(kc => kc < KeyCode.Mouse0 || (kc >= KeyCode.Mouse3 && kc <= KeyCode.Mouse6))
-            .Where(kc => !ModifierKeys.Contains(kc))
-            .ToArray();
-        private static readonly BuffGroup[] BuffGroups = (BuffGroup[])Enum.GetValues(typeof(BuffGroup));
 
         private void Awake() {
             Instance = this;
@@ -112,47 +90,8 @@ namespace BuffIt2TheLimit {
             }
 
 #endif
-            // Handle keyboard shortcut capture
-            if (CapturingActive) {
-                foreach (KeyCode kc in BindableKeys) {
-                    if (Input.GetKeyDown(kc)) {
-                        var binding = kc == KeyCode.Escape ? ShortcutBinding.None : ShortcutBinding.Capture(kc);
-                        OnShortcutCaptured?.Invoke(binding);
-                        CapturingActive = false;
-                        OnShortcutCaptured = null;
-                        break;
-                    }
-                }
-            } else {
-                // Handle buff group shortcut execution
-                var state = GlobalBubbleBuffer.Instance?.SpellbookController?.state;
-                if (state != null) {
-                    // Group keys are off while the menu is open: its keys and typed names must not cast.
-                    foreach (BuffGroup group in BuffGroups) {
-                        var binding = state.GetShortcut(group);
-                        if (!PadQuickMenu.IsOpen && binding.IsPressed()) {
-                            GlobalBubbleBuffer.Execute(group);
-                        }
-                    }
-
-                    // Handle open-buff-menu shortcut
-                    if (!padDiagLogged) {
-                        padDiagLogged = true;
-                        Main.Log($"[PAD] controller alive, gamepad={Game.Instance.IsControllerGamepad}, menu key={state.GetOpenBuffMenuShortcut().ToDisplayString()}");
-                    }
-                    if (Input.anyKeyDown && padKeysLogged < 300) {
-                        foreach (KeyCode kc in BindableKeys) {
-                            if (Input.GetKeyDown(kc)) {
-                                padKeysLogged++;
-                                Main.Log($"[PAD] key down: {kc}");
-                            }
-                        }
-                    }
-                    // The pad menu is the only buff screen, in both control modes and both games.
-                    if (!PadQuickMenu.Capturing)
-                        PadGestures.Tick(state.GetOpenBuffMenuShortcut());
-                }
-            }
+            // The mod has no keys of its own: the menu opens from the game's interface (the menu card with the gamepad,
+            // the quick cast bar with mouse and keyboard) and groups are cast from the menu or the bar.
         }
 
         public void Destroy() {

@@ -28,6 +28,8 @@ namespace BuffIt2TheLimit {
     // Options: mod settings, or settings of one buff and its casters.
     // Gamepad buttons go through the game's console input layer (the world and HUD are blocked while
     // the menu is open); directions are polled from the Rewired player for hold-to-repeat.
+    // Start and Esc bring the game's menu over the buff menu, as over the game's own windows; the buff menu hides
+    // under it and comes back. It never pauses the game: three groups in a row should not need three unpauses.
     // Keyboard keys (PadKeys) are polled; the game's own hotkeys are off while the menu is open.
     // Mouse: the pointer lights up what it is over. A click selects a row, a second click on the selected row acts as A;
     // rows that only open a page, keys, party members, tick boxes and values act at once. The wheel scrolls, the right
@@ -69,6 +71,7 @@ namespace BuffIt2TheLimit {
         private const int CustomNameColumn = 34;
 
         private GameObject overlay;
+        private Canvas overlayCanvas;
         private RectTransform panel;
         private TextMeshProUGUI titleText;
         private TMP_FontAsset font;
@@ -173,9 +176,6 @@ namespace BuffIt2TheLimit {
         private bool rebuildRequested;
         // The wheel moved the list: the cursor is already inside it, RenderOptions keeps the scroll as it is.
         private bool optScrolled;
-        private Action<ShortcutBinding> captureDone;
-
-        public static bool Capturing => instance != null && instance.captureDone != null;
 
         private RepeatInput vertical;
         private RepeatInput horizontal;
@@ -199,6 +199,11 @@ namespace BuffIt2TheLimit {
 
         public static bool IsOpen => instance != null && instance.gameObject.activeSelf;
 
+        private static string ModId => ModSettings.ModEntry.Info.Id;
+
+        // A window of another mod of the collection is open: the buff menu does not open over it.
+        public static bool OtherModWindowOpen => ModWindows.ModWindow.OtherOpen(ModId);
+
         private class ListRow {
             public Image Bg;
             public GameObject Box;
@@ -221,7 +226,7 @@ namespace BuffIt2TheLimit {
             try {
                 if (IsOpen)
                     instance.Close();
-                else
+                else if (!OtherModWindowOpen)
                     Open();
             } catch (Exception ex) {
                 Main.Error(ex, "PadQuickMenu.Toggle");
@@ -252,11 +257,13 @@ namespace BuffIt2TheLimit {
             instance.BlockGameKeys();
             instance.ShowPage(Page.Main);
             instance.ShowReport();
+            ModWindows.ModWindow.Opened(ModId, instance.overlay);
             Main.Log($"[PAD] opened, input layer={(instance.layerHandle != null)}");
         }
 
         private void Close() {
-            captureDone = null;
+            Uncover();
+            ModWindows.ModWindow.Closed(overlay);
             PopInput();
             UnblockGameKeys();
             gameObject.SetActive(false);
@@ -292,6 +299,7 @@ namespace BuffIt2TheLimit {
         }
 
         private void OnDestroy() {
+            ModWindows.ModWindow.Closed(overlay);
             PopInput();
             UnblockGameKeys();
             BuffExecutor.RoutineFinished -= OnRoutineFinished;
@@ -303,12 +311,23 @@ namespace BuffIt2TheLimit {
 
         private void Update() {
             try {
-                PadPointer.WatchMouse();
-                PollButtons();
-                PollMouse();
-                if (captureDone != null) {
-                    PollCapture();
-                } else {
+                bool over = GameMenuOver();
+                if (over != covered) {
+                    covered = over;
+                    overlayCanvas.enabled = !over;
+                    // The press that closes the game's menu is not also a press in the buff menu.
+                    if (!over)
+                        ignoreInputUntil = Time.frameCount + 2;
+                }
+                // The game's menu loaded a save or went to the main menu.
+                if (covered && Kingmaker.EntitySystem.Persistence.LoadingProcess.Instance.IsLoadingInProcess) {
+                    Close();
+                    return;
+                }
+                if (!covered && Time.frameCount > ignoreInputUntil) {
+                    PadPointer.WatchMouse();
+                    PollButtons();
+                    PollMouse();
                     PollDirections();
                     if (page == Page.Name)
                         PollNameKeys();
@@ -334,6 +353,74 @@ namespace BuffIt2TheLimit {
             } catch (Exception ex) {
                 Main.Error(ex, "PadQuickMenu.Update");
             }
+        }
+
+        // ---------- the game's menu over the buff menu ----------
+
+        // Start opens it through the game's base layer, which stays bound under the menu's layer (gamepad mode); Esc
+        // opens it here (keyboard mode). While it or a window opened from it (options, saves) is up, the buff menu is
+        // hidden and takes no input; with the keyboard the game's keys are back meanwhile, the menu needs them.
+        private bool covered;
+        private bool menuRequested;
+        private int menuFrame = -10;
+        private int ignoreInputUntil;
+#if KINGMAKER
+        private HashSet<Kingmaker.UI.ServiceWindow.UIWindow> shownBefore;
+        private static readonly HarmonyLib.AccessTools.FieldRef<Kingmaker.UI.SaveLoadWindow.SaveLoadWindow, bool> SaveLoadShown =
+            HarmonyLib.AccessTools.FieldRefAccess<Kingmaker.UI.SaveLoadWindow.SaveLoadWindow, bool>("m_IsShown");
+#endif
+
+        private void OpenGameMenu() {
+#if KINGMAKER
+            shownBefore = new(FindObjectsOfType<Kingmaker.UI.ServiceWindow.UIWindow>().Where(w => w.IsShow));
+#endif
+            menuRequested = true;
+            menuFrame = Time.frameCount;
+            UnblockGameKeys();
+            Main.Log("[PAD] game menu over the buff menu");
+#if KINGMAKER
+            Kingmaker.PubSubSystem.EventBus.RaiseEvent<Kingmaker.PubSubSystem.IEscMenuWindowUIHandler>(h => h.HandleOpen());
+#else
+            Kingmaker.PubSubSystem.EventBus.RaiseEvent<Kingmaker.PubSubSystem.IEscMenuHandler>(h => h.HandleOpen());
+#endif
+        }
+
+        private bool GameMenuOver() {
+            if (Game.Instance.IsControllerGamepad) {
+                if (layerHandle == null)
+                    return false;
+                var layer = GamePad.Instance?.CurrentInputLayer;
+                return layer != null && layer.ContextName != "BI2TL_PadQuickMenu";
+            }
+            if (!menuRequested)
+                return false;
+            // The menu takes a frame or two to show.
+            if (Time.frameCount <= menuFrame + 2)
+                return true;
+#if KINGMAKER
+            // Options and the like are windows of the game's kind; the list of saves and the confirmations are not.
+            bool shown = Kingmaker.EntitySystem.Persistence.LoadingProcess.Instance.IsLoadingInProcess
+                || FindObjectsOfType<Kingmaker.UI.ServiceWindow.UIWindow>().Any(w => w.IsShow && !shownBefore.Contains(w))
+                || FindObjectsOfType<Kingmaker.UI.SaveLoadWindow.SaveLoadWindow>().Any(w => SaveLoadShown(w))
+                || FindObjectsOfType<Kingmaker.UI.DialogMessageBox>().Any(w => w.IsShown);
+#else
+            var common = Kingmaker.UI.MVVM.RootUIContext.Instance?.CommonVM;
+            bool shown = common != null && (common.EscMenuContextVM?.EscMenu.Value != null || common.SaveLoadVM.Value != null
+                || common.SettingsVM.Value != null || common.MessageModalVM.Value != null);
+#endif
+            if (!shown) {
+                menuRequested = false;
+                BlockGameKeys();
+            }
+            return shown;
+        }
+
+        // Closing under the game's menu: the canvas comes back for the next opening.
+        private void Uncover() {
+            covered = false;
+            menuRequested = false;
+            if (overlayCanvas != null)
+                overlayCanvas.enabled = true;
         }
 
         // ---------- input ----------
@@ -382,11 +469,8 @@ namespace BuffIt2TheLimit {
         // Buttons arrive from the input layer and from polling the Rewired player;
         // whichever comes first in a frame wins, the other is ignored.
         private void Fire(RewiredActionType action, string source) {
-            if (captureDone != null) {
-                if (action == RewiredActionType.Decline)
-                    EndCapture(null);
+            if (covered || Time.frameCount <= ignoreInputUntil)
                 return;
-            }
             int frame = Time.frameCount;
             if (firedFrame.TryGetValue(action, out var last) && frame - last <= 2)
                 return;
@@ -468,6 +552,8 @@ namespace BuffIt2TheLimit {
                 if (PadKeys.Pressed(PadKeys.For(action)))
                     Fire(action, "key");
             }
+            if (Input.GetKeyDown(KeyCode.Escape) && !Game.Instance.IsControllerGamepad)
+                OpenGameMenu();
             if (Input.GetKeyDown(KeyCode.Delete) && page == Page.Groups)
                 DeleteGroup();
             if (Input.GetKeyDown(KeyCode.Home))
@@ -485,11 +571,16 @@ namespace BuffIt2TheLimit {
             }
         }
 
-        // On the name page letters are text; Enter and Backspace come through PollTyping.
+        // On the name page letters are text; Enter and Backspace come through PollTyping. Backspace on an empty name
+        // leaves the page (Q is a letter here, Esc opens the game's menu as everywhere).
         private void PollNameKeys() {
-            PollTyping();
-            if (Input.GetKeyDown(KeyCode.Escape))
+            if (Input.GetKeyDown(KeyCode.Backspace) && nameBuffer.Length == 0) {
                 OnDecline();
+                return;
+            }
+            PollTyping();
+            if (Input.GetKeyDown(KeyCode.Escape) && !Game.Instance.IsControllerGamepad)
+                OpenGameMenu();
             if (Input.GetKeyDown(KeyCode.PageUp))
                 CycleDuration(-1);
             if (Input.GetKeyDown(KeyCode.PageDown))
@@ -527,9 +618,6 @@ namespace BuffIt2TheLimit {
 
         // ---------- mouse ----------
 
-        // While a key is captured the mouse does nothing but the right button, which leaves the key as it was.
-        private bool MouseBlocked => captureDone != null;
-
         // On release: the press and the release both land on the menu, so the game never sees half a click.
         private void PollMouse() {
             if (Input.GetMouseButtonUp(1))
@@ -539,8 +627,7 @@ namespace BuffIt2TheLimit {
         // A click on a button hint or icon does what the button does.
         private void Press(RewiredActionType button) {
             if (button == RewiredActionType.DPadRight) {
-                if (!MouseBlocked)
-                    MoveHorizontal(1);
+                MoveHorizontal(1);
                 return;
             }
             Fire(button, "mouse");
@@ -548,7 +635,7 @@ namespace BuffIt2TheLimit {
 
         // The wheel moves the visible part of a list by a few rows and takes the cursor along, so it stays in view.
         private void OnWheel(float y) {
-            if (MouseBlocked || Mathf.Abs(y) < 0.01f)
+            if (Mathf.Abs(y) < 0.01f)
                 return;
             int delta = y > 0 ? -WheelRows : WheelRows;
             switch (page) {
@@ -599,7 +686,7 @@ namespace BuffIt2TheLimit {
 
         // Group rows cast, so the first click only selects them; the other rows open a page or flip a setting at once.
         private void ClickMain(int i, PointerEventData e) {
-            if (MouseBlocked || i >= MainRowCount)
+            if (i >= MainRowCount)
                 return;
             bool act = i == selected || i >= mainGroups.Count;
             selected = i;
@@ -610,7 +697,7 @@ namespace BuffIt2TheLimit {
 
         // The first click selects a group for the hints below (rename, hide, delete), the second opens it.
         private void ClickGroup(int i, PointerEventData e) {
-            if (MouseBlocked || i >= GroupsRowCount)
+            if (i >= GroupsRowCount)
                 return;
             bool act = i == groupsCursor || i >= groupList.Count;
             groupsCursor = i;
@@ -622,7 +709,7 @@ namespace BuffIt2TheLimit {
         // The tick box switches the buff on or off at once; the second click on a row adds or removes the buff.
         private void ClickMember(int r, PointerEventData e) {
             int at = memberTop + r;
-            if (MouseBlocked || at >= memberList.Count)
+            if (at >= memberList.Count)
                 return;
             bool act = at == memberCursor;
             memberCursor = at;
@@ -639,14 +726,14 @@ namespace BuffIt2TheLimit {
         // A row only selects the buff; its targets are switched on the party members below it.
         private void ClickEditorRow(int r) {
             int at = top + r;
-            if (MouseBlocked || at >= filtered.Count || at == cursor)
+            if (at >= filtered.Count || at == cursor)
                 return;
             cursor = at;
             RenderEditor();
         }
 
         private void ClickChip(int i) {
-            if (MouseBlocked || i >= Party.Count)
+            if (i >= Party.Count)
                 return;
             partyCol = i;
             RenderEditor();
@@ -654,8 +741,6 @@ namespace BuffIt2TheLimit {
         }
 
         private void ClickTab(PointerEventData e) {
-            if (MouseBlocked)
-                return;
             int link = TMP_TextUtilities.FindIntersectingLink(tabText, e.position, null);
             if (link >= 0)
                 SwitchTab(tabText.textInfo.linkInfo[link].GetLinkID() == "prev" ? -1 : 1);
@@ -664,7 +749,7 @@ namespace BuffIt2TheLimit {
         // The arrows of a value step it back or forth; a click on the value, or a second click on the row, steps it forth.
         private void ClickOption(int r, PointerEventData e) {
             int at = optTop + r;
-            if (MouseBlocked || at >= opts.Count || opts[at].Header)
+            if (at >= opts.Count || opts[at].Header)
                 return;
             var text = optRows[r].Text;
             int delta = 0;
@@ -688,7 +773,7 @@ namespace BuffIt2TheLimit {
         }
 
         private void ClickKey(int r, int c) {
-            if (MouseBlocked || r >= keys.Count || c >= keys[r].Count)
+            if (r >= keys.Count || c >= keys[r].Count)
                 return;
             keyRow = r;
             keyCol = c;
@@ -697,35 +782,6 @@ namespace BuffIt2TheLimit {
         }
 
         // ---------- key capture ----------
-
-        private static readonly KeyCode[] CaptureKeys = ((KeyCode[])Enum.GetValues(typeof(KeyCode)))
-            .Where(k => k != KeyCode.None && (k < KeyCode.Mouse0 || (k >= KeyCode.Mouse3 && k <= KeyCode.Mouse6))
-                && !(k >= KeyCode.RightShift && k <= KeyCode.RightWindows) && k != KeyCode.AltGr)
-            .Distinct().ToArray();
-
-        private void StartCapture(Action<ShortcutBinding> done) {
-            captureDone = done;
-            RenderOptions();
-        }
-
-        // Esc clears the key; B on the gamepad leaves it as it was.
-        private void PollCapture() {
-            foreach (var key in CaptureKeys) {
-                if (!Input.GetKeyDown(key))
-                    continue;
-                EndCapture(key == KeyCode.Escape ? ShortcutBinding.None : ShortcutBinding.Capture(key));
-                return;
-            }
-        }
-
-        private void EndCapture(ShortcutBinding? binding) {
-            var done = captureDone;
-            captureDone = null;
-            ignoreKeysUntil = Time.frameCount + 1;
-            if (binding != null)
-                done?.Invoke(binding.Value);
-            RebuildOptions();
-        }
 
         private struct RepeatInput {
             private int last;
@@ -1839,8 +1895,7 @@ namespace BuffIt2TheLimit {
                 return;
             try {
                 opts[optCursor].Change(delta);
-                if (captureDone == null)
-                    Commit();
+                Commit();
             } catch (Exception ex) {
                 Main.Error(ex, "PadQuickMenu.ChangeOption");
             }
@@ -1880,9 +1935,7 @@ namespace BuffIt2TheLimit {
                 }
                 bool atCursor = at == optCursor;
                 row.Bg.color = atCursor ? RowSelectedColor : RowColor;
-                string value = atCursor && captureDone != null
-                    ? $"<color={PadTheme.Accent}>{"pad.opt.press".i8()}</color>"
-                    : opt.Value?.Invoke() ?? "";
+                string value = opt.Value?.Invoke() ?? "";
                 row.Text.text = $"{Trim(opt.Label, 48)}<pos=62%>{value}";
             }
             var current = optCursor >= 0 && optCursor < opts.Count ? opts[optCursor] : null;
@@ -1913,17 +1966,6 @@ namespace BuffIt2TheLimit {
             Value = () => $"<link=\"dec\"><color={PadTheme.Heading}>‹</color> </link>{value()}<link=\"inc\"> <color={PadTheme.Heading}>›</color></link>",
             Change = change,
             Note = note
-        };
-
-        private Opt KeyOption(string id, string label, Func<ShortcutBinding> get, Action<ShortcutBinding> set) => new() {
-            Id = id,
-            Label = label,
-            Value = () => {
-                var key = get();
-                return key.IsNone ? $"<color={PadTheme.Muted}>{"shortcut.none".i8()}</color>" : $"<color={PadTheme.Accent}>{key.ToDisplayString()}</color>";
-            },
-            Change = _ => StartCapture(set),
-            Note = T("pad.opt.key.note")
         };
 
         private static int Wrap(int value, int delta, int count) => ((value + delta) % count + count) % count;
@@ -1983,27 +2025,12 @@ namespace BuffIt2TheLimit {
             }, "setting-umd-retries-tooltip".i8()));
 #endif
 
-            list.Add(Head("pad.set.keys".i8()));
-            list.Add(KeyOption("key:menu", Label("shortcut.openbuffmenu"), s.GetOpenBuffMenuShortcut, s.SetOpenBuffMenuShortcut));
-            foreach (var group in PadGroups.All()) {
-                var g = group;
-                list.Add(KeyOption("key:" + g, string.Format("pad.set.groupkey".i8(), PadGroups.Name(g)), () => s.GetShortcut(g), b => s.SetShortcut(g, b)));
-            }
-            list.Add(Flag("gestures", "pad.set.gestures".i8(), () => pad.Gestures, v => {
-                pad.Gestures = v;
-                PadSettings.Save();
-            }, T("pad.set.gestures.note")));
-
             list.Add(Head("pad.set.view".i8()));
             list.Add(Cycle("display", "pad.set.display".i8(), () => DisplayName(pad.Display), d => {
                 pad.Display = (PadDisplay)Wrap((int)pad.Display, d, 3);
                 PadSettings.Save();
                 rebuildRequested = true;
             }, "pad.set.display.note".i8()));
-            list.Add(Flag("bar", "pad.set.bar".i8(), () => pad.QuickCastBar, v => {
-                pad.QuickCastBar = v;
-                PadSettings.Save();
-            }, "pad.set.bar.note".i8()));
 #if KINGMAKER
             list.Add(Cycle("barx", "pad.set.bar.x".i8(), () => pad.BarOffsetX.ToString(), d => {
                 pad.BarOffsetX += d * 20;
@@ -2315,6 +2342,7 @@ namespace BuffIt2TheLimit {
             var menu = root.AddComponent<PadQuickMenu>();
             menu.builtForKeyboard = PadSettings.KeyboardMode;
             menu.overlay = overlay;
+            menu.overlayCanvas = canvas;
             menu.panel = rect;
             menu.font = font;
             menu.titleText = MakeText(root.transform, font, PadTheme.Initial("pad.title".i8()), 30, FontStyles.Bold, TitleColor);
@@ -2389,7 +2417,7 @@ namespace BuffIt2TheLimit {
                     ("Enter", "pad.h.done", m => m.FinishName()),
                     ("Backspace", "pad.h.erase", m => m.Backspace()),
                     ("PgUp/PgDn", "pad.h.duration", m => m.CycleDuration(1)),
-                    ("Esc", "pad.h.cancel", m => m.OnDecline()));
+                    ("RMB", "pad.h.cancel", m => m.OnDecline()));
             } else {
                 MakeHintBar(menu.nameRoot.transform, font,
                     (new[] { RewiredActionType.DPadVertical, RewiredActionType.DPadHorizontal }, "pad.h.key"),
@@ -2576,7 +2604,7 @@ namespace BuffIt2TheLimit {
                 var pointer = AddPointer(item, tint: false);
                 pointer.Mark(label, TitleColor);
                 pointer.Click = _ => {
-                    if (instance != null && !instance.MouseBlocked)
+                    if (instance != null)
                         act(instance);
                 };
             }

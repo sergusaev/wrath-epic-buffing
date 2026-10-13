@@ -55,7 +55,7 @@ else
   TAG="kingmaker-v$VERSION"
   ZIPNAME="PadBuffsKingmaker-$VERSION.zip"
   TITLE="Buff It 2 The Limit (Groups) for Kingmaker $VERSION"
-  INSTALL="Unpack into \`<Kingmaker>/Mods/\` so the result is \`Mods/PadBuffsKingmaker/Info.json\`; when updating, delete \`*.cache\` there. The menu key is F7 by default."
+  INSTALL="Unpack into \`<Kingmaker>/Mods/\` so the result is \`Mods/PadBuffsKingmaker/Info.json\`; when updating, delete \`*.cache\` there."
   GUIDE_LINK="[pad-docs/README.md, section Kingmaker]($DOCS/README.md#kingmaker) ([русский]($DOCS/README.ru.md#kingmaker))"
 fi
 

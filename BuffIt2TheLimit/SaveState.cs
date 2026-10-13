@@ -78,10 +78,6 @@ namespace BuffIt2TheLimit {
         [JsonProperty]
         public bool SortByName;
         [JsonProperty]
-        public Dictionary<BuffGroup, ShortcutBinding> ShortcutKeys = new();
-        [JsonProperty]
-        public ShortcutBinding OpenBuffMenuKey;
-        [JsonProperty]
         // Names, durations and visibility of groups edited in the buff menu;
         // built-in groups appear here only once renamed or hidden.
         public List<SavedGroup> Groups = new();

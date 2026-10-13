@@ -210,7 +210,7 @@ namespace BuffIt2TheLimit {
                     BuffGroup.Quick => "apply_buffs_short",
                     _ => "apply_buffs"
                 };
-                var button = MakeButton(icon, () => PadGestures.Apply(group, "bar"),
+                var button = MakeButton(icon, () => PadCast.Apply(group, "bar"),
                     () => PadQuickMenu.OpenGroup(group), () => GroupTip(group), i < 9 ? (i + 1).ToString() : null);
                 buttons.Add((group, button));
             }
@@ -276,8 +276,7 @@ namespace BuffIt2TheLimit {
 
         private static (string, string, List<BubbleBuff>) GroupTip(BuffGroup group) {
             var state = State;
-            var key = state?.GetShortcut(group) ?? ShortcutBinding.None;
-            var text = string.Format("pad.bar.tip".i8(), key.IsNone ? "shortcut.none".i8() : key.ToDisplayString());
+            var text = "pad.bar.tip".i8();
             var buffs = state?.BuffList?.Where(b => PadGroups.IsMember(b, group) && b.ActiveIn(group))
                 .OrderBy(b => b.Name).ToList() ?? new List<BubbleBuff>();
             if (buffs.Count == 0)
@@ -357,7 +356,7 @@ namespace BuffIt2TheLimit {
                 AttachToHud();
                 var game = Game.Instance;
                 var pad = PadSettings.Current;
-                bool show = pad.QuickCastBar && game != null && !game.IsControllerGamepad && State != null
+                bool show = game != null && !game.IsControllerGamepad && State != null
                     && game.RootUiContext != null && !game.RootUiContext.IsMainMenu
                     && !Kingmaker.EntitySystem.Persistence.LoadingProcess.Instance.IsLoadingInProcess
                     && (game.CurrentMode == GameModeType.Default || game.CurrentMode == GameModeType.Pause

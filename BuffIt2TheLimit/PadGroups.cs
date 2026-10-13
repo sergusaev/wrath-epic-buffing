@@ -132,7 +132,6 @@ namespace BuffIt2TheLimit {
                 return;
             StripGroup(group);
             Saved.RemoveAll(g => g.Id == group);
-            State.SavedState.ShortcutKeys?.Remove(group);
             SaveAll();
         }
 

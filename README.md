@@ -1,8 +1,8 @@
-> **Fork with a buff group menu for gamepad, keyboard and mouse.** This is [sergusaev/wrath-epic-buffing](https://github.com/sergusaev/wrath-epic-buffing), a fork of [Gh05d/wrath-epic-buffing](https://github.com/Gh05d/wrath-epic-buffing) (Buff It 2 The Limit 1.21.2). It adds Buff It 2 The Limit (Groups): a menu of buff groups driven by the gamepad in the console interface of Wrath of the Righteous and by keyboard and mouse in its PC interface, and a port of that menu to Pathfinder: Kingmaker.
+> **Fork with a buff group menu.** This is [sergusaev/wrath-epic-buffing](https://github.com/sergusaev/wrath-epic-buffing), a fork of [Gh05d/wrath-epic-buffing](https://github.com/Gh05d/wrath-epic-buffing) (Buff It 2 The Limit 1.21.2). It adds Buff It 2 The Limit (Groups): a menu of buff groups for the console and the PC interface of Wrath of the Righteous, opened from the game's own menus, and a port of that menu to Pathfinder: Kingmaker.
 >
 > - Branch `gamepad` (default) holds the fork; branch `master` mirrors the original and is kept in sync with it.
 > - Menu guide, Kingmaker port, building and fork maintenance: [pad-docs/README.md](pad-docs/README.md) ([на русском](pad-docs/README.ru.md)).
-> - Installing on the Steam Deck from scratch (Unity Mod Manager, Steam Input layout): [Steam Deck guide](https://github.com/sergusaev/pathfinder-mods/blob/main/docs/steam-deck.md). Ready zips: [Releases](https://github.com/sergusaev/wrath-epic-buffing/releases).
+> - Installing on the Steam Deck from scratch (Unity Mod Manager): [Steam Deck guide](https://github.com/sergusaev/pathfinder-mods/blob/main/docs/steam-deck.md). Ready zips: [Releases](https://github.com/sergusaev/wrath-epic-buffing/releases).
 > - Everything below is the original README. Issues with the group menu belong here, not to the original mod.
 
 # Buff It 2 The Limit
@@ -17,7 +17,6 @@ A fork of [factubsio's BubbleBuffs](https://github.com/factubsio/BubbleBuffs) �
 - **Reserve companion support** — Configure buffs for characters who aren't in your active party. When they swap in, their buff configuration travels with them.
 - **Smart casting** — Extend Rod metamagic auto-pick, Bypass Arcane Spell Failure when prebuffing out of combat, Brownfur Transmuter (Share Transmutation), Azata Zippy Magic, Powerful Change, Magic Deceiver fused spells, Magic Weapon (EnhanceWeapon), and crafted-item caster levels all handled correctly.
 - **Multi-group assignment** — One buff can belong to Normal, Quick, and Important groups simultaneously.
-- **Customizable keyboard shortcuts** — Bind each buff group and the buff menu to a keyboard shortcut with modifier-key support.
 - **Quick open button** — HUD button jumps straight into buff configuration without navigating the spellbook.
 - **Redesigned details panel** — Vertical split layout with spell info, source controls, scrollable caster/target portraits with reserve separator, and an action bar.
 - **Source-type overlays** — Game-native icons on caster portraits showing spell, scroll, potion or equipment source.

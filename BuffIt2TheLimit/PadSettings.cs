@@ -11,8 +11,6 @@ namespace BuffIt2TheLimit {
     // Settings of the pad menu that do not depend on the playthrough, kept next to the mod.
     internal class PadSettings {
 
-        [JsonProperty] public bool QuickCastBar = true;
-        [JsonProperty] public bool Gestures = true;
         [JsonProperty] public bool ShowHidden;
         [JsonProperty] public PadDisplay Display = PadDisplay.Auto;
         [JsonProperty] public int BarOffsetX;

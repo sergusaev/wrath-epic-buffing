@@ -655,24 +655,6 @@ namespace BuffIt2TheLimit {
             return false;
         }
 
-        public ShortcutBinding GetShortcut(BuffGroup group) =>
-            SavedState.ShortcutKeys.TryGetValue(group, out var binding) ? binding : ShortcutBinding.None;
-
-        public void SetShortcut(BuffGroup group, ShortcutBinding binding) {
-            if (binding.IsNone)
-                SavedState.ShortcutKeys.Remove(group);
-            else
-                SavedState.ShortcutKeys[group] = binding;
-            Save(true);
-        }
-
-        public ShortcutBinding GetOpenBuffMenuShortcut() => SavedState.OpenBuffMenuKey;
-
-        public void SetOpenBuffMenuShortcut(ShortcutBinding binding) {
-            SavedState.OpenBuffMenuKey = binding;
-            Save(true);
-        }
-
         private static readonly HashSet<BuffGroup> DefaultGroups = new HashSet<BuffGroup> { BuffGroup.Long };
 
         public void Save(bool shallow = false) {

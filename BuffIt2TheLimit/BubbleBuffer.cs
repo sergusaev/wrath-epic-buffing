@@ -169,9 +169,6 @@ namespace BuffIt2TheLimit {
             } else {
                 save = new SavedBufferState();
             }
-            // As in Kingmaker the menu opens with F7 unless another key is set; L5 sends F7 through Steam Input.
-            if (save.OpenBuffMenuKey.IsNone)
-                save.OpenBuffMenuKey = new ShortcutBinding(KeyCode.F7);
 
             state = new(save);
             view = new(state);
@@ -680,44 +677,6 @@ namespace BuffIt2TheLimit {
             WindowCreated = true;
         }
 
-        private void MakeKeybindRow(Transform parent, string labelText, Func<ShortcutBinding> getter, Action<ShortcutBinding> setter) {
-            var row = new GameObject($"keybind-row", typeof(RectTransform));
-            row.transform.SetParent(parent, false);
-            var hg = row.AddComponent<HorizontalLayoutGroup>();
-            hg.childControlHeight = true;
-            hg.childControlWidth = true;
-            hg.childForceExpandWidth = false;
-            hg.spacing = 8;
-
-            var labelObj = new GameObject("label", typeof(RectTransform));
-            labelObj.transform.SetParent(row.transform, false);
-            var labelLE = labelObj.AddComponent<LayoutElement>();
-            labelLE.flexibleWidth = 1;
-            var lText = labelObj.AddComponent<TextMeshProUGUI>();
-            lText.text = labelText;
-            lText.fontSize = 14;
-            lText.color = new Color(0.2f, 0.2f, 0.2f);
-            lText.alignment = TextAlignmentOptions.MidlineLeft;
-
-            var btnObj = UnityEngine.Object.Instantiate(buttonPrefab, row.transform);
-            var btnLE = btnObj.GetComponent<LayoutElement>() ?? btnObj.AddComponent<LayoutElement>();
-            btnLE.preferredWidth = 120;
-            btnLE.flexibleWidth = 0;
-            var btnText = btnObj.GetComponentInChildren<TextMeshProUGUI>();
-            btnText.text = getter().ToDisplayString();
-
-            var btn = btnObj.GetComponent<OwlcatButton>();
-            btn.OnLeftClick.AddListener(() => {
-                if (BubbleBuffGlobalController.CapturingActive) return;
-                btnText.text = "shortcut.press".i8();
-                BubbleBuffGlobalController.CapturingActive = true;
-                BubbleBuffGlobalController.OnShortcutCaptured = (binding) => {
-                    setter(binding);
-                    btnText.text = binding.ToDisplayString();
-                };
-            });
-        }
-
         private static (ToggleWorkaround, TextMeshProUGUI) MakeSettingsToggle(GameObject prefab, Transform content, string text) {
             var toggleObj = GameObject.Instantiate(prefab, content);
             toggleObj.SetActive(true);
@@ -1005,20 +964,6 @@ namespace BuffIt2TheLimit {
                     state.Save(true);
                 });
             }
-
-            // Keyboard shortcut per group
-            foreach (BuffGroup group in Enum.GetValues(typeof(BuffGroup))) {
-                var groupCopy = group;
-                var key = $"shortcut.{group.ToString().ToLower()}";
-                MakeKeybindRow(scrollContent, key.i8(),
-                    () => state.GetShortcut(groupCopy),
-                    binding => state.SetShortcut(groupCopy, binding));
-            }
-
-            // Open buff menu shortcut
-            MakeKeybindRow(scrollContent, "shortcut.openbuffmenu".i8(),
-                () => state.GetOpenBuffMenuShortcut(),
-                binding => state.SetOpenBuffMenuShortcut(binding));
 
             // Clear All Assignments — two-click confirmation
             {
@@ -2908,7 +2853,7 @@ namespace BuffIt2TheLimit {
         [HarmonyPostfix]
         public static void Initialize(ModificatorsBaseView __instance) {
             // Room for the quick cast bar, which is shown only with mouse and keyboard.
-            if (Game.Instance.IsControllerGamepad || !PadSettings.Current.QuickCastBar) return;
+            if (Game.Instance.IsControllerGamepad) return;
             if (__instance.gameObject.transform is not RectTransform rect) return;
 
             rect.localPosition += new Vector3(0, 70, 0);
@@ -3306,9 +3251,10 @@ namespace BuffIt2TheLimit {
                 }
             }
 
-            // The quick cast bar exists only with mouse and keyboard; the gamepad has the menu and its gestures.
-            if (Game.Instance.IsControllerGamepad || !PadSettings.Current.QuickCastBar) {
-                Main.Verbose("[TryInstallUI] No quick cast bar — gamepad mode or switched off");
+            // The quick cast bar exists only with mouse and keyboard, and opens the menu there; the gamepad opens it
+            // from the card in the game's menu.
+            if (Game.Instance.IsControllerGamepad) {
+                Main.Verbose("[TryInstallUI] No quick cast bar — gamepad mode");
                 RemoveBar();
                 return;
             }
@@ -3491,7 +3437,7 @@ namespace BuffIt2TheLimit {
                         BuffGroup.Quick => applyBuffsShortSprites,
                         _ => applyBuffsSprites
                     };
-                    var made = AddButtonWithTemplate(new TooltipTemplateGroupBuffs(group), sprites, () => PadGestures.Apply(group, "bar"), InfoCallPCMethod.RightMouseButton);
+                    var made = AddButtonWithTemplate(new TooltipTemplateGroupBuffs(group), sprites, () => PadCast.Apply(group, "bar"), InfoCallPCMethod.RightMouseButton);
                     AddNumber(made, i + 1);
                 }
 

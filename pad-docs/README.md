@@ -2,7 +2,7 @@
 
 [Русская версия](README.ru.md)
 
-This fork of [Buff It 2 The Limit](https://github.com/Gh05d/wrath-epic-buffing) 1.21.2 (MIT; authors Vek17, factubsio, Gh05d) adds a menu of buff groups for Pathfinder: Wrath of the Righteous and Pathfinder: Kingmaker. It is driven entirely by the gamepad in the console interface, where the PC spellbook screen of the original mod does not exist, and by keyboard and mouse in the PC interface (see [Controls](#controls)).
+This fork of [Buff It 2 The Limit](https://github.com/Gh05d/wrath-epic-buffing) 1.21.2 (MIT; authors Vek17, factubsio, Gh05d) adds a menu of buff groups for Pathfinder: Wrath of the Righteous and Pathfinder: Kingmaker. It works with the gamepad in the console interface, where the PC spellbook screen of the original mod does not exist, and with keyboard and mouse in the PC interface (see [Controls](#controls)).
 
 ## Installing
 
@@ -13,26 +13,16 @@ This fork of [Buff It 2 The Limit](https://github.com/Gh05d/wrath-epic-buffing) 
 
 ## Opening the menu
 
-The menu opens with the menu key from the mod settings:
+The menu opens from the game's own interface, with no keys or button bindings:
 
-- **Kingmaker:** F7 by default (written into a new settings file).
-- **WotR:** the key the original mod calls "open buff menu". Set it in the PC spellbook screen in mouse and keyboard mode, or write it into the settings file (`OpenBuffMenuKey`, see [Files](#files)); the [Steam Deck guide](https://github.com/sergusaev/pathfinder-mods/blob/main/docs/steam-deck.md#3-installing-the-mods) has a ready command that sets F7.
-- **Gamepad menu of the game:** a "Buffs" card after the game's cards, in the style of the game's cards (in WotR not on the global map of the crusade); the menu opens once the game's menu closes on it.
-- **Mouse and keyboard:** also the last button of the quick cast bar.
+- **Gamepad:** a "Buffs" card in the game's gamepad menu, after the game's cards, in the style of the game's cards (in WotR not on the global map of the crusade); the menu opens once the game's menu closes on it.
+- **Mouse and keyboard:** the last button of the quick cast bar above the action bar.
 
-**Steam Deck from scratch** — Unity Mod Manager for both games, `startup.json`, the whole Steam Input layout (UMM window on R4, this menu on L5, mouse on the right trackpad): [pathfinder-mods/docs/steam-deck.md](https://github.com/sergusaev/pathfinder-mods/blob/main/docs/steam-deck.md).
+Start or Esc opens the game's menu over the buff menu; the buff menu comes back after it.
 
-A gamepad has no F keys, so bind the key to a free button in Steam Input. On the Steam Deck: Controller settings → Edit layout → Back buttons → L5 → keyboard key F7, a single regular press without delays. The mod recognises the gestures itself (`PadGestures.cs`):
+**Steam Deck from scratch** — Unity Mod Manager for both games and `startup.json`: [pathfinder-mods/docs/steam-deck.md](https://github.com/sergusaev/pathfinder-mods/blob/main/docs/steam-deck.md).
 
-| Menu button | Action |
-|---|---|
-| short press | open or close the menu (fires after 0.35 s: the mod waits for a possible second press) |
-| hold for 0.6 s | apply the built-in Long group ("10 min/level and longer") |
-| double press | apply the built-in Important group ("Rounds") |
-
-The result of every cast, from a gesture or from the menu, pops up at the top of the screen for 5 s with the reasons of failures, and goes to the game's combat log. Activatables count like casts: switched on = applied, already on = already active.
-
-Why the gestures are not done in Steam Input: with a Long Press binding Steam also sends the regular press key, and a Double Press never reached the game. Avoid key chords with Shift: on a short tap Steam Input does not deliver a key with a start delay, only the Shift arrives.
+The result of every cast pops up at the top of the screen for 5 s with the reasons of failures, and goes to the game's combat log. Activatables count like casts: switched on = applied, already on = already active.
 
 ## Controls
 
@@ -99,7 +89,7 @@ The party strip: green — the target is set; gold — the cursor; a struck-thro
 | hover | lights up a row, a key or a hint; the selection does not change |
 | left click on a row | select it; a second click on the selected row acts as A (the first click on a group in the main menu only selects it) |
 | left click, at once | main menu entries other than groups; "+ New group"; a buff's tick box; a character in the party strip; the neighbouring target tabs; keys of the on-screen keyboard; the ‹ › arrows of a value in settings (a click on the value steps it forward) |
-| right click anywhere | back, as B; on the main menu — close; while a key is being assigned — cancel |
+| right click anywhere | back, as B; on the main menu — close |
 | wheel | scrolls group members, buff targets, settings and help by three rows; the selection moves with the list |
 | left click on a hint at the bottom | what its button or key does; for an LB/RB pair, the icon of the side you want; direction hints are not pressed |
 
@@ -121,19 +111,17 @@ Every change is saved to the settings file at once.
 - **Settings**, one file per playthrough: `<mod folder>/UserSettings/bi2tl-<GameId>.json`, where GameId comes from `header.json` of the save, without dashes.
   - `Wanted` — UniqueIds of the targets; `InGroups` — groups.
   - `Version` must be `1`, otherwise a migration wipes the targets.
-  - Keys: `OpenBuffMenuKey`, `ShortcutKeys` (`Long`, `Quick`, `Important`), each `{"Key": "F7", "Ctrl": false, "Shift": false, "Alt": false}`.
   - Edit the file only while the game is closed: the mod saves over it.
 - **Log** (lines tagged `[PAD]`):
   - WotR on Proton: `steamapps/compatdata/1184370/pfx/drive_c/users/steamuser/AppData/LocalLow/Owlcat Games/Pathfinder Wrath Of The Righteous/Player.log`; on Windows `%USERPROFILE%\AppData\LocalLow\Owlcat Games\Pathfinder Wrath Of The Righteous\Player.log`.
   - Kingmaker on Linux: `~/.config/unity3d/Owlcat Games/Pathfinder Kingmaker/Player.log` (also `[PadBuffsKingmaker]`).
-- **WotR in gamepad mode on the Steam Deck:** without `startup.json` containing `{"ForceControllerMode":"gamepad"}` in the game folder, WotR offers to switch to the keyboard on every key press, including the menu key sent by Steam Input.
+- **WotR in gamepad mode on the Steam Deck:** without `startup.json` containing `{"ForceControllerMode":"gamepad"}` in the game folder, WotR offers to switch to the keyboard on every key press.
 
 ## Kingmaker
 
-The same menu (groups, checkboxes, automatic targets, help, gestures) is built for Kingmaker by the separate project `BuffIt2TheLimit.Kingmaker/`. It compiles the shared files of `BuffIt2TheLimit/` with the `KINGMAKER` symbol; the WotR PC spellbook UI (`BubbleBuffer.cs`, `UIHelpers.cs`, `Main.cs`) is not part of that build.
+The same menu (groups, checkboxes, automatic targets, help) is built for Kingmaker by the separate project `BuffIt2TheLimit.Kingmaker/`. It compiles the shared files of `BuffIt2TheLimit/` with the `KINGMAKER` symbol; the WotR PC spellbook UI (`BubbleBuffer.cs`, `UIHelpers.cs`, `Main.cs`) is not part of that build.
 
 - **Mouse mode and gamepad mode.** In gamepad mode the menu takes the buttons through the game's console input layer; in mouse mode there is no such layer, so the gamepad is polled directly and the keyboard works too (arrows, Enter, Backspace). The mouse works in both modes: a `PadPointer` component on rows and hints, `PadWheel` on the menu canvas — which also keeps the game from zooming on the wheel (Kingmaker does not zoom while a scroll handler is under the pointer).
-- **Steam Input layout.** Kingmaker keeps its layout in Steam Cloud; the steps from [Opening the menu](#opening-the-menu) work the same.
 
 **What differs from WotR**
 
@@ -162,10 +150,11 @@ The same menu (groups, checkboxes, automatic targets, help, gestures) is built f
   - Directions are polled from `GamePad.Instance.Player` (Rewired) with auto-repeat.
   - Hints at the bottom of every page and the tab arrows use the game's own button icons: `GamePadIcons.Instance.GetIcon(RewiredActionType)`, built in `MakeHintBar`/`MakeIcon`. Without an icon the text `[A]` is shown. The game font has no ↑↓←→ arrows.
 - `PadGroups.cs` — the group model: custom groups, names by duration, checkboxes, automatic targets (self/party/song), fill by duration.
-- `PadHelp.cs` — help markup and button icons in text. The help text is the key `pad.help.body` (plus `pad.help.km` in Kingmaker); the markup is `#` section, `##` subsection, `- ` item, `1. ` step, `> ` tip, `{A}| text` button row, `**bold**`. The tokens `{A} {B} {X} {Y} {LB} {RB} {UP} {DOWN} {LEFT} {RIGHT}` become sprites of the game's TMP asset (`<sprite name="<prefix><action>">`, the prefix comes from `ConsoleBindingTemplate`: `Steam_`, `XBox_`, `PS4_`), or letters in brackets without the asset; `{L5}` is the menu button icon, `{G1} {G2} {G3}` are the names of the built-in groups. The asset found is logged as `[PAD] icons:`. The example in the help is abstract (Fighter, Cleric, Wizard, Bard, Rogue) and does not depend on the player's party.
-- `PadGestures.cs` — menu button gestures and the `PadToast` pop-up.
+- `PadHelp.cs` — help markup and button icons in text. The help text is the key `pad.help.body` (plus `pad.help.km` in Kingmaker); the markup is `#` section, `##` subsection, `- ` item, `1. ` step, `> ` tip, `{A}| text` button row, `**bold**`. The tokens `{A} {B} {X} {Y} {LB} {RB} {UP} {DOWN} {LEFT} {RIGHT}` become sprites of the game's TMP asset (`<sprite name="<prefix><action>">`, the prefix comes from `ConsoleBindingTemplate`: `Steam_`, `XBox_`, `PS4_`), or letters in brackets without the asset; `{G1} {G2} {G3}` are the names of the built-in groups. The asset found is logged as `[PAD] icons:`. The example in the help is abstract (Fighter, Cleric, Wizard, Bard, Rogue) and does not depend on the player's party.
+- `PadCast.cs` — the cast result handler and the `PadToast` pop-up.
+- `ModWindows.cs` — shared with the pathfinder-mods collection: a registry of open mod windows, so only one is open at a time and the camera and the game's triggers stay still under it.
 - `CoreTypes.cs` — shared types moved out of `BubbleBuffer.cs` for the Kingmaker build.
-- `BuffExecutor.cs`: the `RoutineFinished` event with the cast result; the `ScheduledRoutines` and `FinishedRoutines` counters (without the latter, when there was nothing to cast, "casting…" covered the result for 30 s); in gamepad mode the menu key opens the new window; F6/F7/F9 presses are logged.
+- `BuffExecutor.cs`: the `RoutineFinished` event with the cast result; the `ScheduledRoutines` and `FinishedRoutines` counters (without the latter, when there was nothing to cast, "casting…" covered the result for 30 s).
 - `InstantExecutionEngine.cs` — pauses between batches of casts use real time (`WaitForSecondsRealtime`); otherwise a cast "hangs" while the game is paused.
 - `BubbleBuffer.cs`: `Awake` of the spellbook controller no longer throws in gamepad mode, where there is no spellbook (the original threw `NullReferenceException` in `TryFixEILayout`).
 - `IBeneficialEffect.cs`: `OwnBuffGuids` for the remaining time; `Duration` for the buff duration class.
@@ -234,7 +223,6 @@ The Kingmaker project targets `net48`: Harmony 2.3.6 shipped with UMM for Kingma
 ```bash
 DECK=deck@steamdeck.local ./deploy.sh              # WotR
 DECK=deck@steamdeck.local ./deploy.sh --kingmaker  # Kingmaker
-DECK=deck@steamdeck.local ./deploy.sh --bind-menu  # WotR, plus menu = F7, Long = F6, Important = F9 in every settings file
 ```
 
 `WOTR_DIR` and `KINGMAKER_DIR` override the game folders on the deck. New strings go into all five `Config/*.json`; a key missing from `en_GB.json` crashes the game.
@@ -251,7 +239,6 @@ WotR releases are numbered `v<upstream version>-pad.<N>`, where N is the next un
 ## Pitfalls found along the way
 
 - **L3+R3 is taken:** in WotR it opens the bug report window.
-- **Steam Deck back button names** in a layout file: L4 = `button_back_left_upper`, L5 = `button_back_left`, R4 = `button_back_right_upper`, R5 = `button_back_right`. There is no `…_lower`; Steam silently skips such a block.
 - **The buff list** is not built in gamepad mode until the spellbook is opened, so the menu calls `state.Recalculate(false)` when it opens.
 - **Remaining time** comes from the public `Buff.TimeLeft` and `Buff.IsPermanent`.
 
