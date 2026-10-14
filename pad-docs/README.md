@@ -32,7 +32,6 @@ The result of every cast pops up at the top of the screen for 5 s with the reaso
 |---|---|
 | ↑↓ (D-pad or left stick, holding repeats) | select a row |
 | A on a group | apply the group |
-| Y on a group | group members |
 | A on "Cast in combat" | toggle casting in combat |
 | A on "Groups" | the list of groups |
 | A on "Buff targets" | the target editor |

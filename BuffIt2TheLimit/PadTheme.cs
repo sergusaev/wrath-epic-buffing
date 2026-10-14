@@ -53,6 +53,74 @@ namespace BuffIt2TheLimit {
 #endif
         private const string FontName = "NexusSerif-Regular SDF";
 
+        // The button hints under a window, as under the game's Formation window. Kingmaker lays them on one tiled
+        // plate under the window; WotR gives every hint its own dark strip and leaves the row between them open.
+#if KINGMAKER
+        private const string HintSpriteName = "backHintTile";
+        public const bool HintPlate = true;
+        public const float HintRowHeight = 90f;
+        public const float HintSpriteHeight = 90f;
+        public const float HintSpacing = 50f;
+        public const float HintLabelSize = 20f;
+        public const FontStyles HintLabelStyle = FontStyles.Bold | FontStyles.UpperCase | FontStyles.SmallCaps;
+        public static readonly Color HintLabel = Color.white;
+        public static readonly Color HintHover = new(0.93f, 0.8f, 0.5f);
+        public static readonly RectOffset HintPadding = new(60, 60, 0, 0);
+#else
+        private const string HintSpriteName = "UI_Journal_SliderMenuBackground";
+        public const bool HintPlate = false;
+        public const float HintRowHeight = 60f;
+        public const float HintSpriteHeight = 32f;
+        public const float HintSpacing = 10f;
+        public const float HintLabelSize = 21f;
+        public const FontStyles HintLabelStyle = FontStyles.Bold | FontStyles.SmallCaps;
+        public static readonly Color HintLabel = new(0.706f, 0.706f, 0.706f);
+        public static readonly Color HintHover = Color.white;
+        public static readonly RectOffset HintPadding = new(0, 0, 0, 0);
+#endif
+        public const float HintIconSize = 36f;
+        // Gap between the window and the hint row.
+        public const float HintGap = 12f;
+        private static Sprite hintSprite;
+        private static bool hintSearched;
+
+        // The hint background: the plate (Kingmaker) or the strip behind one hint (WotR). Without the game's sprite a
+        // dark translucent panel.
+        public static void HintBackground(Image image) {
+            image.raycastTarget = false;
+            if (!hintSearched || hintSprite == null) {
+                hintSearched = true;
+                try {
+                    hintSprite = Scaled(UnityEngine.Resources.FindObjectsOfTypeAll<Sprite>().FirstOrDefault(s => s.name == HintSpriteName)
+                        ?? FromBundles(HintSpriteName), HintSpriteHeight);
+                } catch (Exception ex) {
+                    Main.Error(ex, "finding the hint background");
+                }
+            }
+            if (hintSprite != null) {
+                image.sprite = hintSprite;
+                image.type = HintPlate ? Image.Type.Tiled : Image.Type.Sliced;
+                image.fillCenter = true;
+                image.color = HintPlate ? Color.white : new Color(0.03f, 0.008f, 0f, 0.5f);
+            } else {
+                image.sprite = null;
+                image.color = new Color(0.05f, 0.04f, 0.03f, HintPlate ? 0.85f : 0.6f);
+            }
+        }
+
+        // The game draws these sprites at a fixed height whatever their pixels; a copy with the matching pixel density
+        // keeps the sliced and tiled borders the size the game shows them.
+        private static Sprite Scaled(Sprite sprite, float height) {
+            if (sprite == null)
+                return null;
+            try {
+                return Sprite.Create(sprite.texture, sprite.textureRect, new Vector2(0.5f, 0.5f), 100f * sprite.rect.height / height, 0,
+                    SpriteMeshType.FullRect, sprite.border);
+            } catch (Exception) {
+                return sprite;
+            }
+        }
+
         private static bool resolved;
         private static Sprite panelSprite;
         private static Sprite tipSprite;

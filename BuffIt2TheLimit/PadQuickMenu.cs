@@ -89,6 +89,8 @@ namespace BuffIt2TheLimit {
         private readonly List<ListRow> rows = new();
         private List<BuffGroup> mainGroups = new();
         private TextMeshProUGUI reportText;
+        // The label of the A hint on the main page: what A does on the selected row.
+        private TextMeshProUGUI mainConfirmLabel;
         private int selected;
 
         // groups
@@ -921,12 +923,6 @@ namespace BuffIt2TheLimit {
 
         private void OnFuncY() {
             switch (page) {
-                case Page.Main:
-                    if (selected < mainGroups.Count)
-                        OpenMembers(mainGroups[selected], Page.Main);
-                    else
-                        ShowPage(Page.Groups);
-                    break;
                 case Page.Groups:
                     if (groupsCursor < groupList.Count)
                         OpenName(groupList[groupsCursor]);
@@ -1147,6 +1143,10 @@ namespace BuffIt2TheLimit {
         private void UpdateMainSelection() {
             for (int i = 0; i < rows.Count; i++)
                 rows[i].Bg.color = i == selected ? RowSelectedColor : RowColor;
+            if (mainConfirmLabel != null && mainGroups != null)
+                mainConfirmLabel.text = (selected < mainGroups.Count ? "pad.h.apply"
+                    : selected == CombatRow ? (State?.AllowInCombat == true ? "pad.h.disable" : "pad.h.enable")
+                    : "pad.h.open").i8();
         }
 
         private void RefreshMain() {
@@ -2332,7 +2332,7 @@ namespace BuffIt2TheLimit {
 
             var rect = (RectTransform)root.transform;
             rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.anchoredPosition = Vector2.zero;
+            rect.anchoredPosition = new Vector2(0, (PadTheme.HintGap + PadTheme.HintRowHeight) / 2);
             rect.sizeDelta = new Vector2(MainWidth, 0);
 
             PadTheme.Panel(root.AddComponent<Image>());
@@ -2353,12 +2353,12 @@ namespace BuffIt2TheLimit {
             menu.mainRowHolder = MakeContainer(menu.mainRoot.transform, "Rows", 6).transform;
             menu.reportText = MakeText(menu.mainRoot.transform, font, "", 20, FontStyles.Normal, TextColor);
             menu.reportText.gameObject.SetActive(false);
-            MakeHintBar(menu.mainRoot.transform, font,
+            var mainHints = MakeHintBar(menu.mainRoot.transform, font,
                 (new[] { RewiredActionType.DPadVertical }, "pad.h.select"),
                 (new[] { RewiredActionType.Confirm }, "pad.h.apply"),
                 (new[] { RewiredActionType.Func01 }, "pad.h.all"),
-                (new[] { RewiredActionType.Func02 }, "pad.h.members"),
                 (new[] { RewiredActionType.Decline }, "pad.h.close"));
+            menu.mainConfirmLabel = mainHints[1].GetComponentsInChildren<TextMeshProUGUI>().Last();
 
             // groups
             menu.groupsRoot = MakeContainer(root.transform, "Groups", 8);
@@ -2522,29 +2522,76 @@ namespace BuffIt2TheLimit {
             return menu;
         }
 
-        // Button hints the way the game draws them: the console icon of each button, then a label.
+        // Button hints the way the game draws them under its Formation window: a row under the panel, each hint the
+        // console icon of its button and a label (PadTheme.Hint*). The row belongs to its page and shows with it.
         private static List<GameObject> MakeHintBar(Transform parent, TMP_FontAsset font, params (RewiredActionType[] buttons, string labelKey)[] items) {
             var made = new List<GameObject>();
-            var separator = new GameObject("HintSeparator", typeof(RectTransform));
-            separator.transform.SetParent(parent, false);
-            separator.AddComponent<Image>().color = PadTheme.Line;
-            separator.AddComponent<LayoutElement>().preferredHeight = 1;
-
-            var bar = MakeHorizontal(parent, "Hints", 24, TextAnchor.MiddleCenter);
+            var bar = MakeHintRow(parent);
             foreach (var (buttons, labelKey) in items) {
-                var item = MakeHorizontal(bar.transform, "Hint", 6, TextAnchor.MiddleLeft);
-                var icons = buttons.Select(button => MakeIcon(item.transform, font, button, 30)).ToList();
-                var label = MakeText(item.transform, font, labelKey.i8(), 19, FontStyles.Normal, DimColor);
-                label.enableWordWrapping = false;
+                var item = MakeHint(bar);
+                var icons = buttons.Select(button => MakeIcon(item.transform, font, button, PadTheme.HintIconSize, PadTheme.HintLabel)).ToList();
+                var label = MakeHintLabel(item.transform, font, labelKey);
                 // One button: the whole hint is pressed; a pair (LB/RB): each icon on its own.
                 if (buttons.Length == 1)
-                    Clickable(item, buttons[0], label);
+                    Clickable(item, buttons[0], label, PadTheme.HintHover);
                 else
                     for (int i = 0; i < buttons.Length; i++)
-                        Clickable(icons[i], buttons[i]);
+                        Clickable(icons[i], buttons[i], hover: PadTheme.HintHover);
                 made.Add(item);
             }
             return made;
+        }
+
+        // The row sits under the panel, outside its layout, and is switched with the page it was made for.
+        private static Transform MakeHintRow(Transform page) {
+            var panel = page.parent;
+            var row = new GameObject("Hints", typeof(RectTransform));
+            row.transform.SetParent(panel, false);
+            row.AddComponent<LayoutElement>().ignoreLayout = true;
+            var rect = (RectTransform)row.transform;
+            rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0);
+            rect.pivot = new Vector2(0.5f, 1);
+            rect.anchoredPosition = new Vector2(0, -PadTheme.HintGap);
+            rect.sizeDelta = new Vector2(0, PadTheme.HintRowHeight);
+            if (PadTheme.HintPlate)
+                PadTheme.HintBackground(row.AddComponent<Image>());
+            var layout = row.AddComponent<HorizontalLayoutGroup>();
+            layout.padding = PadTheme.HintPadding;
+            layout.spacing = PadTheme.HintSpacing;
+            layout.childAlignment = TextAnchor.MiddleCenter;
+            layout.childControlWidth = true;
+            layout.childControlHeight = true;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+            row.AddComponent<ContentSizeFitter>().horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+            page.gameObject.AddComponent<PadPageHints>().Row = row;
+            // Off until its page is enabled: the pages are built before the menu is first shown.
+            row.SetActive(false);
+            return row.transform;
+        }
+
+        private static GameObject MakeHint(Transform row) {
+            var item = MakeHorizontal(row, "Hint", 6, TextAnchor.MiddleLeft);
+            if (!PadTheme.HintPlate) {
+                // WotR: a dark strip behind every hint, longer than the hint on both sides, as the game draws it.
+                ((HorizontalLayoutGroup)item.GetComponent<LayoutGroup>()).padding = new RectOffset(4, 14, 0, 0);
+                var strip = new GameObject("Background", typeof(RectTransform));
+                strip.transform.SetParent(item.transform, false);
+                strip.AddComponent<LayoutElement>().ignoreLayout = true;
+                var rect = (RectTransform)strip.transform;
+                rect.anchorMin = new Vector2(0, 0.5f);
+                rect.anchorMax = new Vector2(1, 0.5f);
+                rect.sizeDelta = new Vector2(24, PadTheme.HintSpriteHeight);
+                rect.anchoredPosition = new Vector2(2, 0);
+                PadTheme.HintBackground(strip.AddComponent<Image>());
+            }
+            return item;
+        }
+
+        private static TextMeshProUGUI MakeHintLabel(Transform item, TMP_FontAsset font, string labelKey) {
+            var label = MakeText(item, font, labelKey.i8(), PadTheme.HintLabelSize, PadTheme.HintLabelStyle, PadTheme.HintLabel);
+            label.enableWordWrapping = false;
+            return label;
         }
 
         private static GameObject MakeHorizontal(Transform parent, string name, float spacing, TextAnchor alignment) {
@@ -2561,15 +2608,15 @@ namespace BuffIt2TheLimit {
         }
 
         // Falls back to a text label when the game has no icon for the button.
-        private static GameObject MakeIcon(Transform parent, TMP_FontAsset font, RewiredActionType button, float size) {
+        private static GameObject MakeIcon(Transform parent, TMP_FontAsset font, RewiredActionType button, float size, Color? color = null) {
             if (PadSettings.KeyboardMode)
-                return MakeKeyLabel(parent, font, PadKeys.Label(button));
+                return MakeKeyLabel(parent, font, PadKeys.Label(button), color);
             Sprite sprite = null;
             try {
                 sprite = GamePadIcons.Instance?.GetIcon(button);
             } catch (Exception) { }
             if (sprite == null) {
-                var text = MakeText(parent, font, $"[{IconFallback(button)}]", 19, FontStyles.Bold, TitleColor);
+                var text = MakeText(parent, font, $"[{IconFallback(button)}]", 19, FontStyles.Bold, color ?? TitleColor);
                 text.enableWordWrapping = false;
                 return text.gameObject;
             }
@@ -2584,25 +2631,20 @@ namespace BuffIt2TheLimit {
             return go;
         }
 
-        private static GameObject MakeKeyLabel(Transform parent, TMP_FontAsset font, string key) {
-            var text = MakeText(parent, font, $"[{key}]", 19, FontStyles.Bold, TitleColor);
+        private static GameObject MakeKeyLabel(Transform parent, TMP_FontAsset font, string key, Color? color = null) {
+            var text = MakeText(parent, font, $"[{key}]", 19, FontStyles.Bold, color ?? TitleColor);
             text.enableWordWrapping = false;
             return text.gameObject;
         }
 
         private static void MakeKeyHintBar(Transform parent, TMP_FontAsset font, params (string key, string labelKey, Action<PadQuickMenu> act)[] items) {
-            var separator = new GameObject("HintSeparator", typeof(RectTransform));
-            separator.transform.SetParent(parent, false);
-            separator.AddComponent<Image>().color = PadTheme.Line;
-            separator.AddComponent<LayoutElement>().preferredHeight = 1;
-            var bar = MakeHorizontal(parent, "Hints", 24, TextAnchor.MiddleCenter);
+            var bar = MakeHintRow(parent);
             foreach (var (key, labelKey, act) in items) {
-                var item = MakeHorizontal(bar.transform, "Hint", 6, TextAnchor.MiddleLeft);
-                MakeKeyLabel(item.transform, font, key);
-                var label = MakeText(item.transform, font, labelKey.i8(), 19, FontStyles.Normal, DimColor);
-                label.enableWordWrapping = false;
+                var item = MakeHint(bar);
+                MakeKeyLabel(item.transform, font, key, PadTheme.HintLabel);
+                var label = MakeHintLabel(item.transform, font, labelKey);
                 var pointer = AddPointer(item, tint: false);
-                pointer.Mark(label, TitleColor);
+                pointer.Mark(label, PadTheme.HintHover);
                 pointer.Click = _ => {
                     if (instance != null)
                         act(instance);
@@ -2721,7 +2763,7 @@ namespace BuffIt2TheLimit {
         private static readonly Color IconHover = new Color(1f, 0.82f, 0.5f);
 
         // Hints of buttons that only point a direction (select, scroll) are not pressed.
-        private static void Clickable(GameObject go, RewiredActionType button, Graphic label = null) {
+        private static void Clickable(GameObject go, RewiredActionType button, Graphic label = null, Color? hover = null) {
             if (button != RewiredActionType.Confirm && button != RewiredActionType.Decline && button != RewiredActionType.Func01
                 && button != RewiredActionType.Func02 && button != RewiredActionType.LeftUp && button != RewiredActionType.RightUp
                 && button != RewiredActionType.DPadRight)
@@ -2729,7 +2771,7 @@ namespace BuffIt2TheLimit {
             var pointer = AddPointer(go, tint: false);
             var mark = label != null ? label : go.GetComponent<Graphic>();
             if (mark != null)
-                pointer.Mark(mark, mark is Image ? IconHover : mark.color == TitleColor ? TextColor : TitleColor);
+                pointer.Mark(mark, mark is Image ? IconHover : hover ?? (mark.color == TitleColor ? TextColor : TitleColor));
             pointer.Click = _ => instance?.Press(button);
         }
 
@@ -2839,6 +2881,19 @@ namespace BuffIt2TheLimit {
     }
 
     // The wheel anywhere over the menu's screen.
+    // Shows the hint row of a page while the page is shown; the row lives outside the page, under the panel.
+    internal class PadPageHints : MonoBehaviour {
+        public GameObject Row;
+        private void OnEnable() {
+            if (Row != null)
+                Row.SetActive(true);
+        }
+        private void OnDisable() {
+            if (Row != null)
+                Row.SetActive(false);
+        }
+    }
+
     internal class PadWheel : MonoBehaviour, IScrollHandler {
         public Action<float> Scroll;
 
