@@ -7,7 +7,7 @@
 		<TargetFramework>net48</TargetFramework>
 		<AssemblyName>PadBuffsKingmaker</AssemblyName>
 		<RootNamespace>BuffIt2TheLimit</RootNamespace>
-		<Version>0.4.1</Version>
+		<Version>0.4.2</Version>
 		<LangVersion>latest</LangVersion>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>

@@ -157,6 +157,26 @@ namespace BuffIt2TheLimit {
                     }
                 }
             }
+#else
+            // Kingmaker books the enchant facts themselves; one still on its item is live (expiry and unequip take
+            // it off the item).
+            if (EnchantPools != null) {
+                var poolData = unitBuffData.Unit.Get<UnitPartEnchantPoolData>();
+                if (poolData?.EnchantPoolDataDescriptions != null) {
+                    foreach (var desc in poolData.EnchantPoolDataDescriptions) {
+                        if (desc == null || !EnchantPools.Contains(desc.EnchantPool))
+                            continue;
+                        var item = desc.EnchantedItem;
+                        if (item == null || desc.Enchantments == null)
+                            continue;
+                        foreach (var enchant in desc.Enchantments) {
+                            if (enchant != null && item.Enchantments.Contains(enchant)
+                                && !ignoreForOverwriteCheck.Contains(enchant.Blueprint.Gid()))
+                                return true;
+                        }
+                    }
+                }
+            }
 #endif
 
             // Magic Weapon / Greater Magic Weapon's m_Enchantment list is the standard
