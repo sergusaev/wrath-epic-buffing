@@ -224,7 +224,7 @@ namespace BuffIt2TheLimit {
         }
 
         public static void Toggle() {
-            Main.Log($"[PAD] toggle, open={IsOpen}");
+            Main.Verbose($"[PAD] toggle, open={IsOpen}");
             try {
                 if (IsOpen)
                     instance.Close();
@@ -260,7 +260,7 @@ namespace BuffIt2TheLimit {
             instance.ShowPage(Page.Main);
             instance.ShowReport();
             ModWindows.ModWindow.Opened(ModId, instance.overlay);
-            Main.Log($"[PAD] opened, input layer={(instance.layerHandle != null)}");
+            Main.Verbose($"[PAD] opened, input layer={(instance.layerHandle != null)}");
         }
 
         private void Close() {
@@ -379,7 +379,7 @@ namespace BuffIt2TheLimit {
             menuRequested = true;
             menuFrame = Time.frameCount;
             UnblockGameKeys();
-            Main.Log("[PAD] game menu over the buff menu");
+            Main.Verbose("[PAD] game menu over the buff menu");
 #if KINGMAKER
             Kingmaker.PubSubSystem.EventBus.RaiseEvent<Kingmaker.PubSubSystem.IEscMenuWindowUIHandler>(h => h.HandleOpen());
 #else
@@ -479,7 +479,7 @@ namespace BuffIt2TheLimit {
             firedFrame[action] = frame;
             if (padLogLines < 200) {
                 padLogLines++;
-                Main.Log($"[PAD] {action} via {source}, page={page}");
+                Main.Verbose($"[PAD] {action} via {source}, page={page}");
             }
             switch (action) {
                 case RewiredActionType.Confirm: OnConfirm(); break;
@@ -493,7 +493,7 @@ namespace BuffIt2TheLimit {
 
         private void LogSourceOnce(string what) {
             if (loggedSources.Add(what))
-                Main.Log($"[PAD] input source: {what}");
+                Main.Verbose($"[PAD] input source: {what}");
         }
 
         private void MarkDPad(RewiredActionType action) {
@@ -1041,7 +1041,7 @@ namespace BuffIt2TheLimit {
             if (state != null && state.BuffList == null && !recalcTried) {
                 recalcTried = true;
                 state.Recalculate(false);
-                Main.Log($"[PAD] buff list built: {state.BuffList?.Count() ?? -1} buffs, party {Bubble.Group.Count}");
+                Main.Verbose($"[PAD] buff list built: {state.BuffList?.Count() ?? -1} buffs, party {Bubble.Group.Count}");
             }
         }
 
@@ -1396,7 +1396,7 @@ namespace BuffIt2TheLimit {
 
             if (!iconsLogged && memberList.Count > 0) {
                 iconsLogged = true;
-                Main.Log($"[PAD] buff pictures: {memberList.Count(b => b.Icon != null)} of {memberList.Count}, row picture={(memberRows.Count > 0 && memberRows[0].Icon != null)}");
+                Main.Verbose($"[PAD] buff pictures: {memberList.Count(b => b.Icon != null)} of {memberList.Count}, row picture={(memberRows.Count > 0 && memberRows[0].Icon != null)}");
             }
             int on = memberList.Take(memberCount).Count(b => b.ActiveIn(memberGroup));
             string position = memberList.Count > MemberRows ? $"  <color={PadTheme.Muted}>{memberCursor + 1}/{memberList.Count}</color>" : "";
@@ -1611,7 +1611,7 @@ namespace BuffIt2TheLimit {
                     ShowPage(Page.Groups);
                     return;
                 }
-                Main.Log($"[PAD] group created: {created} '{PadGroups.Name(created.Value)}' {duration}");
+                Main.Verbose($"[PAD] group created: {created} '{PadGroups.Name(created.Value)}' {duration}");
                 groupList = PadGroups.All();
                 groupsCursor = groupList.IndexOf(created.Value);
                 OpenMembers(created.Value, Page.Groups);

@@ -12,7 +12,7 @@ namespace BuffIt2TheLimit {
     internal static class PadCast {
 
         internal static void Apply(BuffGroup group, string gesture) {
-            Main.Log($"[PAD] {gesture} → {group}");
+            Main.Verbose($"[PAD] {gesture} → {group}");
             int before = BuffExecutor.ScheduledRoutines;
             int finishedBefore = BuffExecutor.FinishedRoutines;
             try {

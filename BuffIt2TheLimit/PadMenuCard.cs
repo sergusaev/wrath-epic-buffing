@@ -64,14 +64,14 @@ namespace BuffIt2TheLimit {
             card.SetSiblingIndex(overPrevious ? index + 1 : index);
             if (!stacked) {
                 stacked = true;
-                Main.Log($"[PAD] menu card laid {(overPrevious ? "over" : "under")} {previous.name}");
+                Main.Verbose($"[PAD] menu card laid {(overPrevious ? "over" : "under")} {previous.name}");
             }
         }
 
         private static InGameMenuCardEntityConsoleView Create(InGameMenuCardEntityConsoleView rest) {
             if (!dumped) {
                 dumped = true;
-                Main.Log("[PAD] menu card template:\n" + Dump(rest.transform, ""));
+                Main.Verbose("[PAD] menu card template:\n" + Dump(rest.transform, ""));
             }
             var go = UnityEngine.Object.Instantiate(rest.gameObject, rest.transform.parent, false);
             go.name = CardName;
@@ -97,7 +97,7 @@ namespace BuffIt2TheLimit {
                     corner.preserveAspect = true;
                 }
             }
-            Main.Log("[PAD] menu card created");
+            Main.Verbose("[PAD] menu card created");
             return go.GetComponent<InGameMenuCardEntityConsoleView>();
         }
 
@@ -126,7 +126,7 @@ namespace BuffIt2TheLimit {
         }
 
         private static void Select(IngameMenuCardsConsoleView view) {
-            Main.Log("[PAD] menu card selected");
+            Main.Verbose("[PAD] menu card selected");
             pendingMenu = view;
             pendingAt = Time.unscaledTime;
         }

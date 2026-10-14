@@ -170,7 +170,12 @@ namespace BuffIt2TheLimit {
                 string metamagic = task.SpellToCast?.MetamagicData != null && task.SpellToCast.MetamagicData.MetamagicMask != 0
                     ? $" [{task.SpellToCast.MetamagicData.MetamagicMask}]" : "";
                 string rod = task.MetamagicRodItem != null ? $", rod {task.MetamagicRodItem.Name} (charges left {task.MetamagicRodItem.Charges})" : "";
-                Main.Log($"[PAD] cast {(task.ActuallyFired ? "done" : "NOT DONE")}: {task.Caster?.CharacterName} -> {target}: {spell}{metamagic}; {DescribeSource(task)}{rod}");
+                // A cast that did not go off is always logged; the ones that did, in Debug builds only.
+                string line = $"[PAD] cast {(task.ActuallyFired ? "done" : "NOT DONE")}: {task.Caster?.CharacterName} -> {target}: {spell}{metamagic}; {DescribeSource(task)}{rod}";
+                if (task.ActuallyFired)
+                    Main.Verbose(line);
+                else
+                    Main.Log(line);
             } catch (Exception ex) {
                 Main.Log($"[PAD] cast log failed: {ex.Message}");
             }
@@ -598,7 +603,7 @@ namespace BuffIt2TheLimit {
                             target.TryStart();
                         if (target.IsOn) {
                             activated++;
-                            Main.Log($"[PAD] toggle on: {actBuff.Name} by {caster.CharacterName}{ResourceLeft(caster, activatable)}");
+                            Main.Verbose($"[PAD] toggle on: {actBuff.Name} by {caster.CharacterName}{ResourceLeft(caster, activatable)}");
                         } else
                             Main.Log($"[PAD] toggle {actBuff.Name}: did not switch on for {caster.CharacterName}");
                         if (actBuff.DeactivateAfterRounds > 0)

@@ -1,5 +1,8 @@
 > **Fork with a buff group menu.** This is [sergusaev/wrath-epic-buffing](https://github.com/sergusaev/wrath-epic-buffing), a fork of [Gh05d/wrath-epic-buffing](https://github.com/Gh05d/wrath-epic-buffing) (Buff It 2 The Limit 1.21.2). It adds Buff It 2 The Limit (Groups): a menu of buff groups for the console and the PC interface of Wrath of the Righteous, opened from the game's own menus, and a port of that menu to Pathfinder: Kingmaker.
 >
+>
+> **In short.** Install [Unity Mod Manager](https://www.nexusmods.com/site/mods/21), take the zip for your game from [Releases](https://github.com/sergusaev/wrath-epic-buffing/releases) and unpack it into the game's `Mods` folder (WotR: `Mods/BuffIt2TheLimit/`, it replaces the original mod; Kingmaker: `Mods/PadBuffsKingmaker/`). In the game the menu opens from the "Buffs" card of the gamepad menu or, with mouse and keyboard, from the last button of the quick cast bar above the action bar. The menu has its own help page.
+>
 > - Branch `gamepad` (default) holds the fork; branch `master` mirrors the original and is kept in sync with it.
 > - Menu guide, Kingmaker port, building and fork maintenance: [pad-docs/README.md](pad-docs/README.md) ([на русском](pad-docs/README.ru.md)).
 > - Installing on the Steam Deck from scratch (Unity Mod Manager): [Steam Deck guide](https://github.com/sergusaev/pathfinder-mods/blob/main/docs/steam-deck.md). Ready zips: [Releases](https://github.com/sergusaev/wrath-epic-buffing/releases).
