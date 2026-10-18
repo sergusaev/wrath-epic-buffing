@@ -107,7 +107,8 @@ namespace ModWindows
     // pushed layer: the triggers would still open the party list and the card wheel, toggle pause and the action bar
     // over a window. They do nothing while one is open; Start still opens the game's menu, as over the game's own
     // windows. Only what shows is stopped: a hide (false, 0) goes through, so nothing opened before stays stuck.
-    [HarmonyPatch]
+    // Three patch classes instead of one prefix with object[] __args: the Harmony that WotR ships (2.0.4) cannot
+    // inject __args, and with some loaders it is the one in use. Arguments are bound by name, which every version knows.
     static class BaseLayerLock
     {
         static readonly string[][] Targets = {
@@ -121,7 +122,8 @@ namespace ModWindows
             new[] { "Kingmaker.UI.MVVM._ConsoleView.GlobalMap.GlobalMapConsoleView", "ShowCards" },
         };
 
-        static IEnumerable<MethodBase> TargetMethods()
+        // The target methods whose first argument is "value" of this type; null = all the others.
+        internal static List<MethodBase> Methods(Type valueType)
         {
             var methods = new List<MethodBase>();
             foreach (var target in Targets)
@@ -131,28 +133,40 @@ namespace ModWindows
                 for (int i = 1; i < target.Length; i++)
                 {
                     var method = AccessTools.Method(type, target[i]);
-                    if (method != null) methods.Add(method);
+                    if (method == null) continue;
+                    var parameters = method.GetParameters();
+                    Type own = parameters.Length > 0 && parameters[0].Name == "value"
+                        && (parameters[0].ParameterType == typeof(bool) || parameters[0].ParameterType == typeof(float))
+                        ? parameters[0].ParameterType : null;
+                    if (own == valueType) methods.Add(method);
                 }
             }
             return methods;
         }
+    }
 
-        static bool Prepare()
-        {
-            foreach (var method in TargetMethods()) return true;
-            return false;
-        }
+    [HarmonyPatch]
+    static class BaseLayerLockBool
+    {
+        static IEnumerable<MethodBase> TargetMethods() { return BaseLayerLock.Methods(typeof(bool)); }
+        static bool Prepare() { return BaseLayerLock.Methods(typeof(bool)).Count > 0; }
+        static bool Prefix(bool value) { return !ModWindow.AnyOpen || !value; }
+    }
 
-        static bool Prefix(object[] __args)
-        {
-            if (!ModWindow.AnyOpen) return true;
-            if (__args != null && __args.Length > 0)
-            {
-                if (__args[0] is bool && !(bool)__args[0]) return true;
-                if (__args[0] is float && (float)__args[0] == 0f) return true;
-            }
-            return false;
-        }
+    [HarmonyPatch]
+    static class BaseLayerLockFloat
+    {
+        static IEnumerable<MethodBase> TargetMethods() { return BaseLayerLock.Methods(typeof(float)); }
+        static bool Prepare() { return BaseLayerLock.Methods(typeof(float)).Count > 0; }
+        static bool Prefix(float value) { return !ModWindow.AnyOpen || value == 0f; }
+    }
+
+    [HarmonyPatch]
+    static class BaseLayerLockOther
+    {
+        static IEnumerable<MethodBase> TargetMethods() { return BaseLayerLock.Methods(null); }
+        static bool Prepare() { return BaseLayerLock.Methods(null).Count > 0; }
+        static bool Prefix() { return !ModWindow.AnyOpen; }
     }
 
     [HarmonyPatch]
