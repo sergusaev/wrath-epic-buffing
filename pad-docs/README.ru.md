@@ -8,7 +8,7 @@
 
 1. Установить Unity Mod Manager для игры.
 2. Собрать мод (см. [Сборка](#сборка)) или взять релиз.
-3. WotR: положить `BuffIt2TheLimit.dll` и `Info.json` в `<игра>/Mods/BuffIt2TheLimit/` (в справке для Steam Deck — `mods`; Proton регистр не различает). В UMM мод называется «Buff It 2 The Limit (Groups)». Он заменяет оригинальный мод: у них один id и одни файлы настроек. BubbleBuffs он тоже заменяет, но его настройки (`bubblebuff-*.json`) не читает.
+3. WotR: положить `BuffIt2TheLimit.dll` и `Info.json` в `<игра>/Mods/BuffIt2TheLimit/`. В UMM мод называется «Buff It 2 The Limit (Groups)». Он заменяет оригинальный мод: у них один id и одни файлы настроек. BubbleBuffs он тоже заменяет, но его настройки (`bubblebuff-*.json`) не читает.
 4. Kingmaker: положить `PadBuffsKingmaker.dll` и `Info.json` в `<игра>/Mods/PadBuffsKingmaker/`.
 
 ## Открытие меню
@@ -167,11 +167,9 @@ Start или Esc открывают меню игры поверх меню ба
 | Программа | Зачем | macOS | Linux | Windows |
 |---|---|---|---|---|
 | .NET SDK 8 или новее | сборка обоих проектов | `curl -sSL https://dot.net/v1/dotnet-install.sh \| bash -s -- --channel 8.0` (в `~/.dotnet`) или `brew install --cask dotnet-sdk` | тот же скрипт или пакет дистрибутива `dotnet-sdk-8.0` | `winget install Microsoft.DotNet.SDK.8` |
-| Bash, `ssh`, `md5sum`/`md5` | `deploy.sh`, `release.sh` | встроены | встроены | Git for Windows: `winget install Git.Git`, скрипты запускать из **Git Bash** |
-| `zip` или bsdtar | упаковка zip для релиза | встроен (`tar`) | `sudo apt install zip` | `C:\Windows\System32\tar.exe`, используется сам |
-| GitHub CLI `gh` | только `release.sh --publish` | `brew install gh` | [cli.github.com](https://cli.github.com/) | `winget install GitHub.cli` |
+| Bash, `ssh`, `md5sum`/`md5` | `deploy.sh` | встроены | встроены | Git for Windows: `winget install Git.Git`, скрипты запускать из **Git Bash** |
 
-`deploy.sh` и `release.sh` берут `dotnet` из `PATH`, затем из `~/.dotnet`; переопределяется `DOTNET=/путь/к/dotnet`. После установки `gh` один раз войти: `gh auth login`.
+`deploy.sh` берёт `dotnet` из `PATH`, затем из `~/.dotnet`; переопределяется `DOTNET=/путь/к/dotnet`.
 
 **Пакеты NuGet** `dotnet build` скачивает сам при первой сборке (нужен интернет): `Microsoft.NETFramework.ReferenceAssemblies` 1.0.3 (эталонные сборки .NET Framework 4.8 / 4.8.1, поэтому targeting pack Windows не нужен) и `BepInEx.AssemblyPublicizer.MSBuild` 0.4.2 (открывает приватные члены игры при компиляции).
 
@@ -226,14 +224,6 @@ DECK=deck@steamdeck.local ./deploy.sh --kingmaker  # Kingmaker
 
 `WOTR_DIR` и `KINGMAKER_DIR` переопределяют папки игр на деке. Новые строки добавлять во все пять `Config/*.json`; без ключа в `en_GB.json` игра падает.
 
-### Выпуск релиза
-
-```bash
-./release.sh wotr                  # собрать Release и упаковать dist/BuffIt2TheLimit-Pad-<версия>-pad.<N>.zip
-./release.sh kingmaker --publish   # упаковать dist/PadBuffsKingmaker-<версия>.zip, тег kingmaker-v<версия>, публикация
-```
-
-Релизы WotR нумеруются `v<версия оригинала>-pad.<N>`, где N — следующий невыпущенный номер; версия Kingmaker берётся из `BuffIt2TheLimit.Kingmaker/Info.json`, перед публикацией её нужно поднять. Для `--publish` нужны [GitHub CLI](https://cli.github.com/), чистое дерево и выложенная `gamepad`; `--notes FILE` заменяет стандартное описание. Папка `dist/` в git не попадает.
 
 ## Грабли, найденные по пути
 

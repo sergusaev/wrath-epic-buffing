@@ -8,7 +8,7 @@ This fork of [Buff It 2 The Limit](https://github.com/Gh05d/wrath-epic-buffing) 
 
 1. Install Unity Mod Manager for the game.
 2. Build the mod (see [Building](#building)) or take a release.
-3. WotR: copy `BuffIt2TheLimit.dll` and `Info.json` into `<game>/Mods/BuffIt2TheLimit/` (the Steam Deck guide uses `mods`; Proton ignores case). UMM lists the mod as "Buff It 2 The Limit (Groups)". It replaces the original mod: both use the same id and the same settings files. It also replaces BubbleBuffs, but does not read the BubbleBuffs settings (`bubblebuff-*.json`).
+3. WotR: copy `BuffIt2TheLimit.dll` and `Info.json` into `<game>/Mods/BuffIt2TheLimit/`. UMM lists the mod as "Buff It 2 The Limit (Groups)". It replaces the original mod: both use the same id and the same settings files. It also replaces BubbleBuffs, but does not read the BubbleBuffs settings (`bubblebuff-*.json`).
 4. Kingmaker: copy `PadBuffsKingmaker.dll` and `Info.json` into `<game>/Mods/PadBuffsKingmaker/`.
 
 ## Opening the menu
@@ -167,11 +167,9 @@ The same menu (groups, checkboxes, automatic targets, help) is built for Kingmak
 | Tool | What for | macOS | Linux | Windows |
 |---|---|---|---|---|
 | .NET SDK 8 or newer | building both projects | `curl -sSL https://dot.net/v1/dotnet-install.sh \| bash -s -- --channel 8.0` (to `~/.dotnet`) or `brew install --cask dotnet-sdk` | the same script, or the distro package `dotnet-sdk-8.0` | `winget install Microsoft.DotNet.SDK.8` |
-| Bash, `ssh`, `md5sum`/`md5` | `deploy.sh`, `release.sh` | built in | built in | Git for Windows: `winget install Git.Git`, run the scripts from **Git Bash** |
-| `zip` or bsdtar | packing release zips | built in (`tar`) | `sudo apt install zip` | `C:\Windows\System32\tar.exe`, used automatically |
-| GitHub CLI `gh` | `release.sh --publish` only | `brew install gh` | [cli.github.com](https://cli.github.com/) | `winget install GitHub.cli` |
+| Bash, `ssh`, `md5sum`/`md5` | `deploy.sh` | built in | built in | Git for Windows: `winget install Git.Git`, run the scripts from **Git Bash** |
 
-`deploy.sh` and `release.sh` take `dotnet` from `PATH`, then from `~/.dotnet`; `DOTNET=/path/to/dotnet` overrides it. After installing `gh`, sign in once with `gh auth login`.
+`deploy.sh` takes `dotnet` from `PATH`, then from `~/.dotnet`; `DOTNET=/path/to/dotnet` overrides it.
 
 **NuGet packages**, downloaded by `dotnet build` on the first build (needs internet): `Microsoft.NETFramework.ReferenceAssemblies` 1.0.3 (the .NET Framework 4.8 / 4.8.1 reference assemblies, so no Windows targeting pack is needed) and `BepInEx.AssemblyPublicizer.MSBuild` 0.4.2 (makes private game members accessible at compile time).
 
@@ -226,14 +224,6 @@ DECK=deck@steamdeck.local ./deploy.sh --kingmaker  # Kingmaker
 
 `WOTR_DIR` and `KINGMAKER_DIR` override the game folders on the deck. New strings go into all five `Config/*.json`; a key missing from `en_GB.json` crashes the game.
 
-### Releasing
-
-```bash
-./release.sh wotr                  # build Release and pack dist/BuffIt2TheLimit-Pad-<version>-pad.<N>.zip
-./release.sh kingmaker --publish   # pack dist/PadBuffsKingmaker-<version>.zip, tag kingmaker-v<version>, publish
-```
-
-WotR releases are numbered `v<upstream version>-pad.<N>`, where N is the next unreleased number; the Kingmaker version comes from `BuffIt2TheLimit.Kingmaker/Info.json` and must be bumped before publishing. `--publish` needs the [GitHub CLI](https://cli.github.com/), a clean tree and `gamepad` pushed; `--notes FILE` replaces the default release notes. `dist/` is not tracked by git.
 
 ## Pitfalls found along the way
 

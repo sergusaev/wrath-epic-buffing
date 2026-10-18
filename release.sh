@@ -2,7 +2,7 @@
 # Package Buff It 2 The Limit (Groups) as a release zip and optionally publish it on GitHub.
 #
 # Usage: ./release.sh wotr|kingmaker [--publish] [--notes FILE]
-#   wotr       BuffIt2TheLimit/ for <WotR>/mods/, tag v<Info.json Version>-pad.<N>, N = next unreleased number
+#   wotr       BuffIt2TheLimit/ for <WotR>/Mods/, tag v<Info.json Version>-pad.<N>, N = next unreleased number
 #   kingmaker  PadBuffsKingmaker/ for <Kingmaker>/Mods/, tag kingmaker-v<Info.json Version>
 #   --publish  create the tag and the GitHub release (needs gh, a clean tree and branch gamepad pushed)
 #   --notes    release notes in Markdown; without it a short default text is used

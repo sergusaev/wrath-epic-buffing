@@ -9,7 +9,7 @@ set -euo pipefail
 DECK="${DECK:?set DECK to the SSH target of the deck, e.g. DECK=deck@steamdeck.local}"
 STEAM_COMMON="/home/deck/.local/share/Steam/steamapps/common"
 GAME="${WOTR_DIR:-$STEAM_COMMON/Pathfinder Second Adventure}"
-MOD_DIR="$GAME/mods/BuffIt2TheLimit"
+MOD_DIR="$GAME/Mods/BuffIt2TheLimit"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT="$HERE/BuffIt2TheLimit/bin/Release"
 
