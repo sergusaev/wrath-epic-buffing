@@ -362,7 +362,9 @@ namespace BuffIt2TheLimit {
                     && (game.CurrentMode == GameModeType.Default || game.CurrentMode == GameModeType.Pause
                         // The Esc menu keeps the HUD in view; on the global map there is no bar.
                         || game.CurrentMode == GameModeType.EscMode && FindAnchor() != null)
-                    && !game.CutsceneLock;
+                    && !game.CutsceneLock
+                    // The local map keeps the default mode, so that the world goes on, but covers the HUD.
+                    && !(game.UI.ServiceWindow != null && game.UI.ServiceWindow.WindowTabs != null && game.UI.ServiceWindow.WindowTabs.IsShow);
                 if (show && State != builtFor)
                     Fill();
                 if (row.gameObject.activeSelf != show) {
