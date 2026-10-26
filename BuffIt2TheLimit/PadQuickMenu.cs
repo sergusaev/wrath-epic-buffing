@@ -164,12 +164,19 @@ namespace BuffIt2TheLimit {
             public Func<string> Value;
             public Action<int> Change;
             public string Note;
+            // Shown as a switch (On) or a choice between arrows (Choice) at the right of the row.
+            public Func<bool> On;
+            public Func<string> Choice;
+            // Every word the choice may show, so the page sizes its plates once (the current one when not given).
+            public Func<IEnumerable<string>> Words;
             public bool Header => Change == null;
         }
+        private const float OptionControlWidth = 240f, OptionControlHeight = 30f;
         private GameObject optionsRoot;
         private readonly List<ListRow> optRows = new();
         private TextMeshProUGUI optDetail;
         private List<Opt> opts = new();
+        private float optPlate;
         private Func<List<Opt>> optSource;
         private string optTitle;
         private Page optBack;
@@ -214,6 +221,8 @@ namespace BuffIt2TheLimit {
             public Image Icon;
             public TextMeshProUGUI Text;
             public PadPointer Pointer;
+            // The switch or the choice of an option, in the look of the game's settings.
+            public ModBar.ModControl Control;
 
             public void SetIcon(Sprite sprite) {
                 if (Icon == null)
@@ -758,7 +767,7 @@ namespace BuffIt2TheLimit {
             int link = TMP_TextUtilities.FindIntersectingLink(text, e.position, ModBar.BarLayout.Cam(text));
             if (link >= 0)
                 delta = text.textInfo.linkInfo[link].GetLinkID() == "dec" ? -1 : 1;
-            else if (at == optCursor || OnValue(text, e))
+            else if (at == optCursor || optRows[r].Control.Shown == ModBar.ModControl.Kind.None && OnValue(text, e))
                 delta = 1;
             optCursor = at;
             if (delta != 0)
@@ -772,6 +781,19 @@ namespace BuffIt2TheLimit {
             var rect = text.rectTransform;
             return RectTransformUtility.ScreenPointToLocalPointInRectangle(rect, e.position, ModBar.BarLayout.Cam(rect), out var local)
                 && local.x >= rect.rect.xMin + rect.rect.width * 0.6f;
+        }
+
+        // An arrow of a choice steps it; a side of a switch turns it when the side is not its state.
+        private void StepOption(int r, int direction) {
+            int at = optTop + r;
+            if (at >= opts.Count || opts[at].Header)
+                return;
+            optCursor = at;
+            var opt = opts[at];
+            if (opt.On == null || opt.On() != direction > 0)
+                ChangeOption(opt.On == null ? direction : 1);
+            else
+                RenderOptions();
         }
 
         private void ClickKey(int r, int c) {
@@ -1865,6 +1887,7 @@ namespace BuffIt2TheLimit {
                 Main.Error(ex, "PadQuickMenu.RebuildOptions");
                 opts = new List<Opt>();
             }
+            optPlate = PlateWidth();
             int found = keep == null ? -1 : opts.FindIndex(o => o.Id == keep);
             if (found >= 0) {
                 optCursor = found;
@@ -1928,22 +1951,51 @@ namespace BuffIt2TheLimit {
                 if (at >= opts.Count) {
                     row.Bg.color = Color.clear;
                     row.Text.text = "";
+                    row.Control.Hide();
                     continue;
                 }
                 var opt = opts[at];
                 if (opt.Header) {
                     row.Bg.color = Color.clear;
                     row.Text.text = $"<color={PadTheme.Accent}><b>{opt.Label}</b></color>";
+                    row.Control.Hide();
                     continue;
                 }
                 bool atCursor = at == optCursor;
+                row.Control.Least = optPlate;
                 row.Bg.color = atCursor ? RowSelectedColor : RowColor;
-                string value = opt.Value?.Invoke() ?? "";
-                row.Text.text = $"{Trim(opt.Label, 48)}<pos=62%>{value}";
+                if (opt.On != null) {
+                    row.Text.text = Trim(opt.Label, 48);
+                    row.Control.SetSwitch(opt.On(), Initial("pad.opt.on".i8()), Initial("pad.opt.off".i8()));
+                } else if (opt.Choice != null) {
+                    row.Text.text = Trim(opt.Label, 48);
+                    row.Control.SetChoice(opt.Choice());
+                } else {
+                    row.Control.Hide();
+                    string value = opt.Value?.Invoke() ?? "";
+                    row.Text.text = $"{Trim(opt.Label, 48)}<pos=62%>{value}";
+                }
             }
             var current = optCursor >= 0 && optCursor < opts.Count ? opts[optCursor] : null;
             string more = opts.Count > OptionRows ? $"  <color={PadTheme.Muted}>{optCursor + 1}/{opts.Count}</color>" : "";
             optDetail.text = (current?.Note ?? "") + more;
+        }
+
+        // All plates of the page as wide as its longest word needs.
+        private float PlateWidth() {
+            var control = optRows.FirstOrDefault()?.Control;
+            if (control == null)
+                return 0f;
+            float width = 0f;
+            foreach (var opt in opts) {
+                IEnumerable<string> words = opt.On != null
+                    ? new[] { Initial("pad.opt.on".i8()), Initial("pad.opt.off".i8()) }
+                    : opt.Choice == null ? null : opt.Words?.Invoke() ?? new[] { opt.Choice() };
+                if (words != null)
+                    foreach (var word in words)
+                        width = Mathf.Max(width, control.Need(word));
+            }
+            return width;
         }
 
         private static string OnOff(bool on) => on
@@ -1955,17 +2007,23 @@ namespace BuffIt2TheLimit {
 
         private static Opt Head(string text) => new() { Id = "head:" + text, Label = text };
 
+        private static string Initial(string word) => word.Length > 0 ? char.ToUpper(word[0]) + word.Substring(1).TrimEnd('.') : word;
+
         private static Opt Flag(string id, string label, Func<bool> get, Action<bool> set, string note = null) => new() {
             Id = id,
             Label = label,
+            On = get,
             Value = () => OnOff(get()),
             Change = _ => set(!get()),
             Note = note
         };
 
-        private static Opt Cycle(string id, string label, Func<string> value, Action<int> change, string note = null) => new() {
+        private static Opt Cycle(string id, string label, Func<string> value, Action<int> change, string note = null,
+            Func<IEnumerable<string>> words = null) => new() {
             Id = id,
             Label = label,
+            Choice = value,
+            Words = words,
             Value = () => $"<link=\"dec\"><color={PadTheme.Heading}>‹</color> </link>{value()}<link=\"inc\"> <color={PadTheme.Heading}>›</color></link>",
             Change = change,
             Note = note
@@ -2017,11 +2075,11 @@ namespace BuffIt2TheLimit {
             list.Add(Cycle("priority", Label("setting-source-priority"), () => PriorityName((int)saved.GlobalSourcePriority), d => {
                 saved.GlobalSourcePriority = (SourcePriority)Wrap((int)saved.GlobalSourcePriority, d, 6);
                 s.Save(true);
-            }, "setting-source-priority-tooltip".i8()));
+            }, "setting-source-priority-tooltip".i8(), () => Enumerable.Range(0, 6).Select(PriorityName)));
             list.Add(Cycle("umdmode", Label("setting-umd-mode"), () => UmdName(saved.UmdMode), d => {
                 saved.UmdMode = (UmdMode)Wrap((int)saved.UmdMode, d, 3);
                 s.Save(true);
-            }, "setting-umd-mode-tooltip".i8()));
+            }, "setting-umd-mode-tooltip".i8(), () => Enumerable.Range(0, 3).Select(i => UmdName((UmdMode)i))));
             list.Add(Cycle("umdretries", Label("setting-umd-retries"), () => saved.UmdRetries.ToString(), d => {
                 saved.UmdRetries = Mathf.Clamp(saved.UmdRetries + d, 1, 20);
                 s.Save(true);
@@ -2033,7 +2091,7 @@ namespace BuffIt2TheLimit {
                 pad.Display = (PadDisplay)Wrap((int)pad.Display, d, 3);
                 PadSettings.Save();
                 rebuildRequested = true;
-            }, "pad.set.display.note".i8()));
+            }, "pad.set.display.note".i8(), () => Enumerable.Range(0, 3).Select(i => DisplayName((PadDisplay)i))));
             list.Add(Flag("hidden", Label("showhidden"), () => pad.ShowHidden, v => {
                 pad.ShowHidden = v;
                 PadSettings.Save();
@@ -2057,7 +2115,7 @@ namespace BuffIt2TheLimit {
                 list.Add(Cycle("rounds", Label("deactivate.after.rounds"),
                     () => buff.DeactivateAfterRounds == 0 ? "nolimit".i8() : buff.DeactivateAfterRounds.ToString(),
                     d => buff.DeactivateAfterRounds = Mathf.Clamp(buff.DeactivateAfterRounds + d, 0, 20),
-                    "deactivate.after.rounds.tooltip".i8()));
+                    "deactivate.after.rounds.tooltip".i8(), () => new[] { "nolimit".i8(), "20" }));
             }
             list.Add(Flag("hide", Label("hideability"), () => buff.HideBecause(HideReason.Blacklisted),
                 v => buff.SetHidden(HideReason.Blacklisted, v), "pad.buffset.hide.note".i8()));
@@ -2070,7 +2128,8 @@ namespace BuffIt2TheLimit {
             list.Add(Flag("extendrod", Label("use.extendrod"), () => buff.UseExtendRod, v => buff.UseExtendRod = v));
             list.Add(Cycle("priority", Label("setting-source-priority"),
                 () => buff.SourcePriorityOverride < 0 ? "priority.useglobal".i8() : PriorityName(buff.SourcePriorityOverride),
-                d => buff.SourcePriorityOverride = Wrap(buff.SourcePriorityOverride + 1, d, 7) - 1));
+                d => buff.SourcePriorityOverride = Wrap(buff.SourcePriorityOverride + 1, d, 7) - 1, null,
+                () => Enumerable.Range(0, 6).Select(PriorityName).Append("priority.useglobal".i8())));
 #endif
 
             var ranks = s.SavedState.CasterRanks ??= new Dictionary<string, int>();
@@ -2082,7 +2141,8 @@ namespace BuffIt2TheLimit {
                 if (caster.MaxCap < 100) {
                     list.Add(Cycle(id + ":cap", Label("limitcasts"),
                         () => caster.CustomCap < 0 ? $"{"nolimit".i8()} ({caster.MaxCap})" : $"{caster.CustomCap}/{caster.MaxCap}",
-                        d => caster.CustomCap = NextCap(caster, d)));
+                        d => caster.CustomCap = NextCap(caster, d), null,
+                        () => new[] { $"{"nolimit".i8()} ({caster.MaxCap})", $"{caster.MaxCap}/{caster.MaxCap}" }));
                 }
                 if (!buff.IsActivatable) {
                     string unitId = caster.who.UniqueId;
@@ -2332,6 +2392,7 @@ namespace BuffIt2TheLimit {
             root.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
             var menu = root.AddComponent<PadQuickMenu>();
+            ModBar.KeyCapRoot.Attach(root);
             menu.builtForKeyboard = PadSettings.KeyboardMode;
             menu.overlay = overlay;
             menu.overlayCanvas = canvas;
@@ -2494,6 +2555,8 @@ namespace BuffIt2TheLimit {
                 var row = MakeListRow(optionBox, font, 20, withBox: false);
                 row.Pointer.Click = e => menu.ClickOption(at, e);
                 row.Pointer.Live = () => menu.optTop + at < menu.opts.Count && !menu.opts[menu.optTop + at].Header;
+                row.Control = ModBar.ModControl.Create((RectTransform)row.Bg.transform, row.Text, OptionControlWidth, OptionControlHeight);
+                row.Control.Step = d => menu.StepOption(at, d);
                 menu.optRows.Add(row);
             }
             menu.optDetail = MakeText(menu.optionsRoot.transform, font, "", 18, FontStyles.Normal, DimColor);
@@ -2619,11 +2682,10 @@ namespace BuffIt2TheLimit {
             return go;
         }
 
-        private static GameObject MakeKeyLabel(Transform parent, TMP_FontAsset font, string key, Color? color = null) {
-            var text = MakeText(parent, font, $"[{key}]", 19, FontStyles.Bold, color ?? TitleColor);
-            text.enableWordWrapping = false;
-            return text.gameObject;
-        }
+        private static GameObject MakeKeyLabel(Transform parent, TMP_FontAsset font, string key, Color? color = null) =>
+            ModBar.KeyCaps.Create(parent, key, KeyCapHeight, font);
+
+        private const float KeyCapHeight = 32f;
 
         private static void MakeKeyHintBar(Transform parent, TMP_FontAsset font, params (string key, string labelKey, Action<PadQuickMenu> act)[] items) {
             var bar = MakeHintRow(parent);

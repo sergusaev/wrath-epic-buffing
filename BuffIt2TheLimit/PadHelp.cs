@@ -128,7 +128,7 @@ namespace BuffIt2TheLimit {
 
         public static string Button(RewiredActionType action) {
             if (PadSettings.KeyboardMode)
-                return Letters(PadKeys.Label(action));
+                return ModBar.KeyCaps.Inline(PadKeys.Label(action));
             Resolve();
             if (asset != null)
                 return $"<size={iconPercent}%><sprite name=\"{prefix}{action}\"></size>";
@@ -187,6 +187,7 @@ namespace BuffIt2TheLimit {
                 if (split >= 0)
                     text = PadSettings.KeyboardMode ? text.Substring(split + 4) : text.Substring(0, split);
             }
+            text = ModBar.KeyCaps.Keys(text);
             if (string.IsNullOrEmpty(text) || text.IndexOf('{') < 0)
                 return text;
             return Token.Replace(text, m => m.Groups[1].Value switch {
