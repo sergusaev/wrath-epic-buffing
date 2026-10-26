@@ -7,7 +7,7 @@
 		<TargetFramework>net48</TargetFramework>
 		<AssemblyName>PadBuffsKingmaker</AssemblyName>
 		<RootNamespace>BuffIt2TheLimit</RootNamespace>
-		<Version>0.4.4</Version>
+		<Version>0.5.0</Version>
 		<LangVersion>latest</LangVersion>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
@@ -42,6 +42,10 @@
 		<Compile Include="..\BuffIt2TheLimit\Config\ModSettings.cs" />
 		<Compile Include="..\BuffIt2TheLimit\ModToggleLock.cs" />
 		<Compile Include="..\BuffIt2TheLimit\ModWindows.cs" />
+		<Compile Include="..\BuffIt2TheLimit\ModBar.cs" />
+		<Compile Include="..\BuffIt2TheLimit\HintTile.cs" />
+		<Compile Include="..\BuffIt2TheLimit\AbovePortraits.cs" />
+		<Compile Include="..\BuffIt2TheLimit\ModScrollbar.cs" />
 		<Compile Include="*.cs" />
 	</ItemGroup>
 	<ItemGroup>

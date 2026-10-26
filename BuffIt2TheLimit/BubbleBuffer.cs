@@ -25,6 +25,8 @@ using Kingmaker.Utility;
 using Newtonsoft.Json;
 using Owlcat.Runtime.UI.Controls.Button;
 using Owlcat.Runtime.UI.Utility;
+using Kingmaker.GameModes;
+using ModBar;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -3022,61 +3024,6 @@ namespace BuffIt2TheLimit {
         }
     }
 
-    class SyncBubbleHud : MonoBehaviour {
-        private GameObject bubbleHud => GlobalBubbleBuffer.Instance.bubbleHud;
-        private CanvasGroup src;
-        // When re-enabled after controller mode, alpha may still be 0 from a prior fade-out.
-        // Suppress alpha-based hiding until alpha has recovered to > 0.9 at least once.
-        private bool waitingForAlpha = false;
-        private float lastAlphaLogged = -1f;
-
-        private void Awake() {
-            src = GetComponent<CanvasGroup>();
-            Main.Verbose($"[SyncBubbleHud] Awake on '{gameObject.name}', src={(src == null ? "NULL" : "ok")}");
-        }
-
-        private void Update() {
-            if (bubbleHud == null) return;
-
-            float alpha = src != null ? src.alpha : -1f;
-            if (Mathf.Abs(alpha - lastAlphaLogged) > 0.05f) {
-                Main.Verbose($"[SyncBubbleHud] alpha={alpha:F2}, bubbleHud.activeSelf={bubbleHud.activeSelf}, waitingForAlpha={waitingForAlpha}");
-                lastAlphaLogged = alpha;
-            }
-
-            if (src == null) return;
-
-            if (alpha < 0.1) {
-                if (!waitingForAlpha)
-                    bubbleHud.SetActive(false);
-            } else if (alpha > 0.9) {
-                waitingForAlpha = false;
-                bubbleHud.SetActive(true);
-            }
-        }
-
-        private void OnEnable() {
-            Main.Verbose($"[SyncBubbleHud] OnEnable, bubbleHud={(bubbleHud == null ? "NULL" : $"activeSelf={bubbleHud.activeSelf}")}, src.alpha={src?.alpha:F2}");
-            waitingForAlpha = true;
-            if (bubbleHud != null && !bubbleHud.activeSelf)
-                bubbleHud.SetActive(true);
-        }
-
-        private void OnDisable() {
-            Main.Verbose($"[SyncBubbleHud] OnDisable, bubbleHud={(bubbleHud == null ? "NULL" : $"activeSelf={bubbleHud.activeSelf}")}");
-            waitingForAlpha = false;
-            if (bubbleHud != null && bubbleHud.activeSelf)
-                bubbleHud?.SetActive(false);
-        }
-
-        private void OnDestroy() {
-            Main.Verbose($"[SyncBubbleHud] OnDestroy — component was destroyed on '{gameObject.name}'");
-        }
-
-        public void Destroy() { }
-
-    }
-
     class GlobalBubbleBuffer {
         // The pad menu is the only buff screen: no buff window in the spellbook, and the HUD keeps
         // only the quick cast bar (mouse and keyboard). The original UI code stays for merges with upstream.
@@ -3129,17 +3076,7 @@ namespace BuffIt2TheLimit {
         private ButtonSprites showMapSprites;
         private ButtonSprites openBuffsSprites;
         private ButtonSprites applyBuffsImportantSprites;
-        private GameObject buttonsContainer;
-        // The frame of the game's menu buttons is 1/BarFrameScale of its size on the bar: its ornamented top (87 units)
-        // then fits a row of 47.7 cells with the game's 17 units above them. To the right the buttons end at the inner
-        // edge of the frame's side (51 of its 316 px). The top 2.5 units of the frame are empty, so the bar goes that
-        // much down onto the game's panel.
-        private const float BarFrameScale = 1.47f;
-        private const float BarFrameTop = 17f;
-        private const float BarFrameRight = 25.5f;
-        private const float BarFrameSink = 2.5f;
-        public GameObject bubbleHud;
-        public GameObject hudLayout;
+        private BarSegment barSegment;
 
         public static Sprite[] UnitFrameSprites = new Sprite[2];
 
@@ -3255,7 +3192,6 @@ namespace BuffIt2TheLimit {
             // from the card in the game's menu.
             if (Game.Instance.IsControllerGamepad) {
                 Main.Verbose("[TryInstallUI] No quick cast bar — gamepad mode");
-                RemoveBar();
                 return;
             }
 
@@ -3311,153 +3247,12 @@ namespace BuffIt2TheLimit {
                     LoadBlueprintIcons();
                 }
 
-                var staticRoot = Game.Instance.UI.Canvas.transform;
-                Main.Verbose("got static root");
-                hudLayout = staticRoot.Find("NestedCanvas1/").gameObject;
-                Main.Verbose("got hud layout");
-
-                Main.Verbose("Removing old bubble root");
-                var oldBubble = hudLayout.transform.parent.Find("BUBBLEMODS_ROOT");
-                if (oldBubble != null) {
-                    GameObject.Destroy(oldBubble.gameObject);
-                }
-
-                bubbleHud = GameObject.Instantiate(hudLayout, hudLayout.transform.parent);
-                Main.Verbose("instantiated root");
-                bubbleHud.name = "BUBBLEMODS_ROOT";
-                var rect = bubbleHud.transform as RectTransform;
-                rect.SetSiblingIndex(hudLayout.transform.GetSiblingIndex() + 1);
-                Main.Verbose("set sibling index");
-
-                bubbleHud.DestroyComponents<UISectionHUDController>();
-
-                Main.Verbose("destroyed components");
-
-                //GameObject.Destroy(rect.Find("CombatLog_New").gameObject);
-                //Main.Verbose("destroyed combatlog_new");
-
-                //GameObject.Destroy(rect.Find("Console_InitiativeTrackerHorizontalPC").gameObject);
-                //Main.Verbose("destroyed horizontaltrack");
-
-                GameObject.Destroy(rect.Find("IngameMenuView/CompassPart").gameObject);
-                Main.Verbose("destroyed compasspart");
-
-                List<GameObject> toDestroy = new();
-                for (int rectChildIndex = 0; rectChildIndex < rect.childCount; rectChildIndex++) {
-                    var rectChild = rect.GetChild(rectChildIndex);
-                    if (rect.GetChild(rectChildIndex).name != "IngameMenuView")
-                        toDestroy.Add(rectChild.gameObject);
-                }
-
-                foreach (var obj in toDestroy) {
-                    var name = obj.name;
-                    GameObject.Destroy(obj);
-                }
-
-                bubbleHud.ChildObject("IngameMenuView").DestroyComponents<IngameMenuPCView>();
-
-                Main.Verbose("destroyed old stuff");
-
-                var buttonPanelRect = rect.Find("IngameMenuView/ButtonsPart");
-                Main.Verbose("got button panel");
-                GameObject.Destroy(buttonPanelRect.Find("TBMMultiButton").gameObject);
-                GameObject.Destroy(buttonPanelRect.Find("InventoryButton").gameObject);
-                var panelRect = (RectTransform)buttonPanelRect;
-                // The bar stands on the game's own panel.
-                rect.anchoredPosition = new Vector2(0, panelRect.sizeDelta.y - BarFrameSink);
-                var frame = buttonPanelRect.Find("Background")?.GetComponent<Image>();
-                var frameSprite = frame?.sprite;
-                if (frameSprite != null) {
-                    // The game's frame of its menu buttons, smaller so its ornamented top fits one row of buttons.
-                    frame.sprite = Sprite.Create(frameSprite.texture, frameSprite.textureRect, new Vector2(0.5f, 0.5f),
-                        frameSprite.pixelsPerUnit * BarFrameScale, 0, SpriteMeshType.FullRect, frameSprite.border);
-                    frame.raycastTarget = false;
-                }
-
-                Main.Verbose("destroyed more old stuff");
-
-                buttonsContainer = buttonPanelRect.Find("Container").gameObject;
-                var buttonsRect = buttonsContainer.transform as RectTransform;
-                buttonsRect.anchoredPosition = Vector2.zero;
-                Main.Verbose("set buttons rect");
-
-                buttonsContainer.GetComponent<GridLayoutGroup>().startCorner = GridLayoutGroup.Corner.LowerLeft;
-
-                var prefab = buttonsContainer.transform.GetChild(0).gameObject;
-                prefab.SetActive(false);
-
-                int toRemove = buttonsContainer.transform.childCount;
-
-                //Loop from 1 and destroy child[1] since we want to keep child[0] as our prefab, which is super hacky but.
-                for (int i = 1; i < toRemove; i++) {
-                    GameObject.DestroyImmediate(buttonsContainer.transform.GetChild(1).gameObject);
-                }
-
-                GameObject AddButtonWithTemplate(TooltipBaseTemplate template, ButtonSprites sprites, Action act, InfoCallPCMethod infoCall = InfoCallPCMethod.None, bool lockInCombat = true) {
-                    var applyBuffsButton = GameObject.Instantiate(prefab, buttonsContainer.transform);
-                    applyBuffsButton.SetActive(true);
-                    OwlcatButton button = applyBuffsButton.GetComponentInChildren<OwlcatButton>();
-                    button.m_CommonLayer[0].SpriteState = new SpriteState {
-                        pressedSprite = sprites.down,
-                        highlightedSprite = sprites.hover,
-                    };
-                    button.OnLeftClick.AddListener(() => {
-                        act();
-                    });
-                    button.SetTooltip(template, new TooltipConfig {
-                        InfoCallPCMethod = infoCall
-                    });
-
-                    if (lockInCombat)
-                        Buttons.Add(button);
-
-                    applyBuffsButton.GetComponentInChildren<Image>().sprite = sprites.normal;
-                    return applyBuffsButton;
-                }
-
-                // One button per group shown in the menu, numbered as the menu numbers them (keys 1-9 there),
-                // then the button that opens the menu. The number sits in the corner of the icon.
-                Buttons.Clear();
-                var groups = PadGroups.Visible();
-                // One row of the game's 47.7 cells side by side; the frame keeps the game's margins above and to the right.
-                const float cell = 47.7f;
-                buttonsRect.sizeDelta = new Vector2(cell * (groups.Count + 1), cell);
-                panelRect.sizeDelta = new Vector2(buttonsRect.sizeDelta.x + BarFrameRight / BarFrameScale, cell + BarFrameTop / BarFrameScale);
-                // The frame is set to the buttons themselves, whatever the panel's layout does with its size.
-                if (frame != null) {
-                    var frameRect = (RectTransform)frame.transform;
-                    frameRect.anchorMin = frameRect.anchorMax = frameRect.pivot = Vector2.zero;
-                    frameRect.anchoredPosition = buttonsRect.anchoredPosition;
-                    frameRect.sizeDelta = panelRect.sizeDelta;
-                }
-                for (int i = 0; i < groups.Count; i++) {
-                    var group = groups[i];
-                    var sprites = group switch {
-                        BuffGroup.Important => applyBuffsImportantSprites,
-                        BuffGroup.Quick => applyBuffsShortSprites,
-                        _ => applyBuffsSprites
-                    };
-                    var made = AddButtonWithTemplate(new TooltipTemplateGroupBuffs(group), sprites, () => PadCast.Apply(group, "bar"), InfoCallPCMethod.RightMouseButton);
-                    AddNumber(made, i + 1);
-                }
-
-                AddButtonWithTemplate(new TooltipTemplateSimple("openbuffs.tooltip.header".i8(), PadHelp.Tokens("pad.bar.menu.tip".i8())),
-                    openBuffsSprites, PadQuickMenu.Toggle, lockInCombat: false);
-                PadBar.UpdateInteractable();
-
-                Main.Verbose("remove old bubble?");
-#if debug
-                RemoveOldController<SyncBubbleHud>(hudLayout.ChildObject("IngameMenuView"));
-#endif
-                var ingameMenuView = hudLayout.ChildObject("IngameMenuView");
-                var existingSync = ingameMenuView.GetComponent<SyncBubbleHud>();
-                Main.Verbose($"[TryInstallUI] IngameMenuView='{ingameMenuView.name}', existingSyncBubbleHud={existingSync != null}, activeSelf={ingameMenuView.activeSelf}, activeInHierarchy={ingameMenuView.activeInHierarchy}");
-                if (existingSync == null) {
-                    ingameMenuView.AddComponent<SyncBubbleHud>();
-                    Main.Verbose("[TryInstallUI] installed new SyncBubbleHud");
-                }
-
-
+                // The bar is the buffs' segment of the block of the mods' buttons over the game's menu buttons (ModBar),
+                // under one frame with the other mods' buttons; the buttons are copies of the game's menu buttons.
+                if (barSegment == null)
+                    barSegment = BarSegment.Add(ModSettings.ModEntry.Info.Id, BarSegment.BuffsOrder, BarShown, FillBar);
+                else if (barSegment.Root != null)
+                    FillBar(barSegment.Root);
 
                 Main.Verbose("Finished early ui setup");
             } catch (Exception ex) {
@@ -3465,12 +3260,62 @@ namespace BuffIt2TheLimit {
             }
         }
 
-        private void RemoveBar() {
+        // The mod's own condition; the block adds the game's (its menu buttons in view, mouse mode).
+        private bool BarShown() {
+            var game = Game.Instance;
+            return SpellbookController?.state != null && !game.CutsceneLock.Active
+                && (game.CurrentMode == GameModeType.Default || game.CurrentMode == GameModeType.Pause
+                    || game.CurrentMode == GameModeType.EscMode);
+        }
+
+        // One button per group shown in the menu, numbered as the menu numbers them (keys 1-9 there), then the button
+        // that opens the menu. The number sits in the corner of the icon.
+        private void FillBar(RectTransform root) {
+            for (int i = root.childCount - 1; i >= 0; i--)
+                GameObject.DestroyImmediate(root.GetChild(i).gameObject);
             Buttons.Clear();
-            if (bubbleHud != null) {
-                GameObject.Destroy(bubbleHud);
-                bubbleHud = null;
+            var container = Game.Instance.UI.Canvas?.transform.Find("NestedCanvas1/IngameMenuView/ButtonsPart/Container");
+            if (container == null || container.childCount == 0 || applyBuffsSprites == null)
+                return;
+            var prefab = container.GetChild(0).gameObject;
+
+            GameObject AddButtonWithTemplate(TooltipBaseTemplate template, ButtonSprites sprites, Action act, InfoCallPCMethod infoCall = InfoCallPCMethod.None, bool lockInCombat = true) {
+                var made = GameObject.Instantiate(prefab, root, false);
+                made.name = "bi2tl-button";
+                made.SetActive(true);
+                var element = made.GetComponent<LayoutElement>() ?? made.AddComponent<LayoutElement>();
+                element.ignoreLayout = false;
+                element.minWidth = element.preferredWidth = element.minHeight = element.preferredHeight = BarSegment.ButtonSize;
+                OwlcatButton button = made.GetComponentInChildren<OwlcatButton>();
+                button.m_CommonLayer[0].SpriteState = new SpriteState {
+                    pressedSprite = sprites.down,
+                    highlightedSprite = sprites.hover,
+                };
+                button.OnLeftClick.RemoveAllListeners();
+                button.OnLeftClick.AddListener(() => act());
+                button.SetTooltip(template, new TooltipConfig {
+                    InfoCallPCMethod = infoCall
+                });
+                if (lockInCombat)
+                    Buttons.Add(button);
+                made.GetComponentInChildren<Image>().sprite = sprites.normal;
+                return made;
             }
+
+            var groups = PadGroups.Visible();
+            for (int i = 0; i < groups.Count; i++) {
+                var group = groups[i];
+                var sprites = group switch {
+                    BuffGroup.Important => applyBuffsImportantSprites,
+                    BuffGroup.Quick => applyBuffsShortSprites,
+                    _ => applyBuffsSprites
+                };
+                var made = AddButtonWithTemplate(new TooltipTemplateGroupBuffs(group), sprites, () => PadCast.Apply(group, "bar"), InfoCallPCMethod.RightMouseButton);
+                AddNumber(made, i + 1);
+            }
+            AddButtonWithTemplate(new TooltipTemplateSimple("openbuffs.tooltip.header".i8(), PadHelp.Tokens("pad.bar.menu.tip".i8())),
+                openBuffsSprites, PadQuickMenu.Toggle, lockInCombat: false);
+            PadBar.UpdateInteractable();
         }
 
         private static void AddNumber(GameObject button, int number) {
@@ -3484,15 +3329,31 @@ namespace BuffIt2TheLimit {
             rect.pivot = new Vector2(1, 0);
             rect.anchoredPosition = new Vector2(-2, 1);
             rect.sizeDelta = new Vector2(18, 18);
+            // A dark copy a pixel lower right stands for the outline: an outline needs a material of its own, which
+            // WotR's text made here does not get.
+            var like = UnityEngine.Object.FindObjectsOfType<TextMeshProUGUI>().FirstOrDefault(t => t.font != null);
+            NumberText(go, like, number, new Color(0, 0, 0, 0.9f), new Vector2(1, -1));
+            NumberText(go, like, number, new Color(0.93f, 0.8f, 0.5f), Vector2.zero);
+        }
+
+        private static void NumberText(GameObject holder, TextMeshProUGUI like, int number, Color color, Vector2 shift) {
+            var go = new GameObject("Text", typeof(RectTransform));
+            go.transform.SetParent(holder.transform, false);
+            var rect = (RectTransform)go.transform;
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = rect.offsetMax = shift;
             var text = go.AddComponent<TextMeshProUGUI>();
+            if (like != null) {
+                text.font = like.font;
+                text.fontSharedMaterial = like.font.material;
+            }
             text.text = number.ToString();
             text.fontSize = 15;
             text.fontStyle = FontStyles.Bold;
-            text.color = new Color(0.93f, 0.8f, 0.5f);
+            text.color = color;
             text.alignment = TextAlignmentOptions.BottomRight;
             text.raycastTarget = false;
-            text.outlineWidth = 0.25f;
-            text.outlineColor = Color.black;
         }
 
 #if DEBUG
@@ -3521,10 +3382,6 @@ namespace BuffIt2TheLimit {
             RemoveOldController<BubbleBuffGlobalController>(spellScreen.transform.root.gameObject);
         }
 #endif
-
-        internal void SetButtonState(bool v) {
-            buttonsContainer?.SetActive(v);
-        }
 
         public static GlobalBubbleBuffer Instance;
         private static ServiceWindowWatcher UiEventSubscriber;

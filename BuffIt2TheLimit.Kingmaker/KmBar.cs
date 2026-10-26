@@ -1,6 +1,7 @@
 using BuffIt2TheLimit.Config;
 using Kingmaker;
 using Kingmaker.GameModes;
+using ModBar;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -12,9 +13,10 @@ using UnityEngine.UI;
 
 namespace BuffIt2TheLimit {
 
-    // Quick cast bar of Kingmaker for mouse and keyboard: the icons of the WotR mod on the mod's own canvas,
-    // one button per group shown in the menu, numbered as the menu numbers them, then a button that opens
-    // the menu. Left click casts the group, right click opens its buffs in the menu.
+    // Quick cast bar of Kingmaker for mouse and keyboard: one button per group shown in the menu, numbered as the menu
+    // numbers them, then a button that opens the menu. Left click casts the group, right click opens its buffs in the
+    // menu. The buttons are the first segment of the block of the mods' buttons over the game's menu buttons (ModBar),
+    // under one frame with the buttons of the other mods.
     internal static class PadBar {
         public static void Refresh() => PadBarView.Rebuild();
 
@@ -23,34 +25,24 @@ namespace BuffIt2TheLimit {
 
     internal class PadBarView : MonoBehaviour {
 
-        private const float ButtonSize = 48f;
-        // TBM_backButton at half size: its top 4.5 units are empty, so the bar goes that much down onto the game's sheet;
-        // the inner edge of its right side is 17.5 units in. Its left end needs only its small ornament, 64 px.
-        private const float FrameSink = 4.5f;
-        private const int FrameRight = 18;
-        private const float FrameLeftBorder = 64f;
         private const float Margin = 8f;
-        // Fallback when the game's menu buttons are not found: above two rows of 48px buttons.
-        private static readonly Vector2 FallbackPos = new(12f, 132f);
+        private const float TipIconSize = 26f;
+        private const int TipBuffs = 12;
 
         private static PadBarView instance;
         private static readonly Dictionary<string, Sprite> Sprites = new();
 
-        private RectTransform row;
         private GameObject tipBox;
         private bool tipPaper;
-        private CanvasGroup rowGroup;
         private TextMeshProUGUI tipTitle;
         private TextMeshProUGUI tipText;
         private RectTransform tipList;
-        private const float TipIconSize = 26f;
-        private const int TipBuffs = 12;
-        // The game's HUD canvas: the bar is laid into it just under the game's tooltips, so they cover it.
-        private RectTransform host;
-        private float nextHostSearch;
         private TMP_FontAsset font;
         private readonly List<(BuffGroup group, Button button)> buttons = new();
+        private BarSegment segment;
         private BufferState builtFor;
+        private bool styled;
+        private float nextStyle;
         private RectTransform anchorBlock;
         private float nextAnchorSearch;
 
@@ -59,20 +51,13 @@ namespace BuffIt2TheLimit {
         public static void Rebuild() {
             try {
                 if (instance == null) {
-                    var overlay = new GameObject("BI2TL_PadBar", typeof(RectTransform));
-                    DontDestroyOnLoad(overlay);
-                    var canvas = overlay.AddComponent<Canvas>();
-                    canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-                    canvas.sortingOrder = 31000;
-                    var scaler = overlay.AddComponent<CanvasScaler>();
-                    scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-                    scaler.referenceResolution = new Vector2(1920, 1080);
-                    scaler.matchWidthOrHeight = 0.5f;
-                    overlay.AddComponent<GraphicRaycaster>();
-                    instance = overlay.AddComponent<PadBarView>();
-                    instance.Build();
+                    var go = new GameObject("BI2TL_PadBar");
+                    DontDestroyOnLoad(go);
+                    instance = go.AddComponent<PadBarView>();
+                    instance.segment = BarSegment.Add(ModSettings.ModEntry.Info.Id, BarSegment.BuffsOrder, instance.Shown, instance.Fill);
                 }
-                instance.Fill();
+                if (instance.segment.Root != null)
+                    instance.Fill(instance.segment.Root);
             } catch (Exception ex) {
                 Main.Error(ex, "PadBar.Rebuild");
             }
@@ -88,33 +73,21 @@ namespace BuffIt2TheLimit {
             }
         }
 
-        private void Build() {
-            font = PadTheme.Font;
-
-            var rowGo = new GameObject("Row", typeof(RectTransform));
-            rowGo.transform.SetParent(transform, false);
-            row = (RectTransform)rowGo.transform;
-            row.anchorMin = row.anchorMax = row.pivot = Vector2.zero;
-            MakeFrame(row);
-            // The grid of the game's menu buttons: 48 px cells 1 px apart, the frame's ornament above and to the right.
-            var layout = rowGo.AddComponent<HorizontalLayoutGroup>();
-            layout.padding = new RectOffset(2, FrameRight, 18, 0);
-            layout.spacing = 1;
-            layout.childControlWidth = false;
-            layout.childControlHeight = false;
-            layout.childForceExpandWidth = false;
-            layout.childForceExpandHeight = false;
-            rowGo.AddComponent<ContentSizeFitter>().horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
-            rowGo.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-            rowGroup = rowGo.AddComponent<CanvasGroup>();
-            MakeTip(transform);
+        // The mod's own condition; the block adds the game's (its menu buttons in view, mouse mode). On the global map there
+        // is no bar.
+        private bool Shown() {
+            var game = Game.Instance;
+            return game != null && State != null && game.RootUiContext != null && !game.RootUiContext.IsMainMenu
+                && (game.CurrentMode == GameModeType.Default || game.CurrentMode == GameModeType.Pause
+                    || game.CurrentMode == GameModeType.EscMode && FindAnchor() != null)
+                && !game.CutsceneLock;
         }
 
         // The tooltip on the game's parchment; made again once the parchment is loaded, if it was made before.
         private void MakeTip(Transform parent) {
             tipPaper = PadTheme.Paper;
             font = PadTheme.Font;
-            tipBox = new GameObject("Tip", typeof(RectTransform));
+            tipBox = new GameObject("BI2TL_PadBarTip", typeof(RectTransform));
             tipBox.transform.SetParent(parent, false);
             var tipRect = (RectTransform)tipBox.transform;
             tipRect.anchorMin = tipRect.anchorMax = tipRect.pivot = Vector2.zero;
@@ -147,36 +120,6 @@ namespace BuffIt2TheLimit {
             tipBox.SetActive(false);
         }
 
-        // The frame of the game's menu buttons, at the game's size, as a child outside the layout (a tiled Image reports
-        // its borders as its minimum size). Its bottom edge is dropped: the game's sheet is open at the bottom, and the
-        // bar's single row is lower than the frame's top and bottom edges together.
-        private static void MakeFrame(RectTransform parent) {
-            var go = new GameObject("Frame", typeof(RectTransform));
-            go.transform.SetParent(parent, false);
-            var rect = (RectTransform)go.transform;
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = rect.offsetMax = Vector2.zero;
-            go.AddComponent<LayoutElement>().ignoreLayout = true;
-            var image = go.AddComponent<Image>();
-            image.raycastTarget = false;
-            var plate = UnityEngine.Resources.FindObjectsOfTypeAll<Sprite>().FirstOrDefault(sp => sp.name == "TBM_backButton");
-            if (plate != null) {
-                try {
-                    var border = plate.border;
-                    image.sprite = Sprite.Create(plate.texture, plate.textureRect, new Vector2(0.5f, 0.5f), plate.pixelsPerUnit, 0,
-                        SpriteMeshType.FullRect, new Vector4(FrameLeftBorder, 0, border.z, border.w));
-                    image.type = Image.Type.Tiled;
-                    // Not narrower than its two ornamented ends (canvas units at 100 pixels per unit).
-                    (parent.GetComponent<LayoutElement>() ?? parent.gameObject.AddComponent<LayoutElement>()).minWidth = (FrameLeftBorder + border.z) * 100f / plate.pixelsPerUnit;
-                } catch (Exception) {
-                    image.sprite = null;
-                }
-            }
-            if (image.sprite == null)
-                image.color = new Color(0.06f, 0.05f, 0.04f, 0.75f);
-        }
-
         private TextMeshProUGUI MakeTipText(string name, float size, FontStyles style, TextAlignmentOptions alignment) {
             var textGo = new GameObject(name, typeof(RectTransform));
             textGo.transform.SetParent(tipBox.transform, false);
@@ -193,13 +136,12 @@ namespace BuffIt2TheLimit {
             return text;
         }
 
-        private void Fill() {
-            foreach (Transform child in row) {
-                if (child.name != "Frame")
-                    Destroy(child.gameObject);
-            }
+        private void Fill(RectTransform root) {
+            for (int i = root.childCount - 1; i >= 0; i--)
+                DestroyImmediate(root.GetChild(i).gameObject);
             buttons.Clear();
             builtFor = State;
+            styled = KmButtonStyle.Ready;
             if (builtFor == null)
                 return;
             var groups = PadGroups.Visible();
@@ -210,19 +152,18 @@ namespace BuffIt2TheLimit {
                     BuffGroup.Quick => "apply_buffs_short",
                     _ => "apply_buffs"
                 };
-                var button = MakeButton(icon, () => PadCast.Apply(group, "bar"),
+                var button = MakeButton(root, icon, () => PadCast.Apply(group, "bar"),
                     () => PadQuickMenu.OpenGroup(group), () => GroupTip(group), i < 9 ? (i + 1).ToString() : null);
                 buttons.Add((group, button));
             }
-            MakeButton("open_buffs", PadQuickMenu.Toggle, PadQuickMenu.Toggle,
+            MakeButton(root, "open_buffs", PadQuickMenu.Toggle, PadQuickMenu.Toggle,
                 () => ("pad.title".i8(), PadHelp.Tokens("pad.bar.menu.tip".i8()), null), null);
             UpdateInteractable();
         }
 
-        private Button MakeButton(string icon, Action left, Action right, Func<(string title, string body, List<BubbleBuff> buffs)> tip, string number) {
-            var go = new GameObject("Button", typeof(RectTransform));
-            go.transform.SetParent(row, false);
-            ((RectTransform)go.transform).sizeDelta = new Vector2(ButtonSize, ButtonSize);
+        private Button MakeButton(RectTransform root, string icon, Action left, Action right, Func<(string title, string body, List<BubbleBuff> buffs)> tip, string number) {
+            var rect = BarSegment.Button(root, "Button");
+            var go = rect.gameObject;
             var image = go.AddComponent<Image>();
             var source = Load(icon + "_normal");
             var normal = KmButtonStyle.Get(icon, source?.texture, KmButtonStyle.State.Normal);
@@ -251,16 +192,16 @@ namespace BuffIt2TheLimit {
             events.Right = right;
             events.Enter = () => {
                 var (title, body, buffs) = tip();
-                ShowTip(title, body, buffs, (RectTransform)go.transform);
+                ShowTip(title, body, buffs, rect);
             };
             events.Exit = HideTip;
             if (number != null) {
                 var numGo = new GameObject("Number", typeof(RectTransform));
                 numGo.transform.SetParent(go.transform, false);
-                var rect = (RectTransform)numGo.transform;
-                rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(1, 0);
-                rect.anchoredPosition = new Vector2(-2, 1);
-                rect.sizeDelta = new Vector2(20, 20);
+                var numRect = (RectTransform)numGo.transform;
+                numRect.anchorMin = numRect.anchorMax = numRect.pivot = new Vector2(1, 0);
+                numRect.anchoredPosition = new Vector2(-2, 1);
+                numRect.sizeDelta = new Vector2(20, 20);
                 var text = numGo.AddComponent<TextMeshProUGUI>();
                 if (font != null)
                     text.font = font;
@@ -285,11 +226,15 @@ namespace BuffIt2TheLimit {
         }
 
         private void ShowTip(string title, string text, List<BubbleBuff> buffs, RectTransform over) {
-            if (tipPaper != PadTheme.Paper) {
-                var parent = tipBox.transform.parent;
-                DestroyImmediate(tipBox);
+            var parent = BarSegment.TipParent as RectTransform;
+            if (parent == null || !BarSegment.Live)
+                return;
+            if (tipBox == null || tipPaper != PadTheme.Paper || tipBox.transform.parent != parent) {
+                if (tipBox != null)
+                    DestroyImmediate(tipBox);
                 MakeTip(parent);
             }
+            tipBox.transform.SetAsLastSibling();
             tipTitle.text = PadTheme.Initial(title);
             tipText.text = text;
             // Gone at once, so the tooltip is measured without the previous group's lines.
@@ -303,9 +248,7 @@ namespace BuffIt2TheLimit {
             }
             tipList.gameObject.SetActive(buffs != null && buffs.Count > 0);
             tipBox.SetActive(true);
-            var tipRect = (RectTransform)tipBox.transform;
-            float x = row.anchoredPosition.x + over.anchoredPosition.x - ButtonSize / 2;
-            tipRect.anchoredPosition = new Vector2(x, row.anchoredPosition.y + row.rect.height + Margin);
+            ((RectTransform)tipBox.transform).anchoredPosition = BarSegment.Above(over, parent) + new Vector2(0, Margin);
         }
 
         private void AddTipBuff(Sprite icon, string name) {
@@ -343,106 +286,31 @@ namespace BuffIt2TheLimit {
             label.text = name;
         }
 
-        private void HideTip() => tipBox.SetActive(false);
+        private void HideTip() {
+            if (tipBox != null)
+                tipBox.SetActive(false);
+        }
 
         private void Update() {
             try {
-                // The HUD went away with its scene, and the bar with it: start again on the bar's own canvas.
-                if (row == null) {
-                    host = null;
-                    Build();
-                    Fill();
+                var root = segment?.Root;
+                bool seen = root != null && root.gameObject.activeInHierarchy;
+                // Another party (a load) or the game's sprites came: the buttons are made again. The sprites come with
+                // the HUD, not with the mod; until the buttons have the game's look, it is tried every second.
+                if (seen && (State != builtFor || !styled && Time.unscaledTime >= nextStyle)) {
+                    nextStyle = Time.unscaledTime + 1f;
+                    if (!styled)
+                        KmButtonStyle.Retry();
+                    if (State != builtFor || KmButtonStyle.Ready)
+                        Fill(root);
                 }
-                AttachToHud();
-                var game = Game.Instance;
-                var pad = PadSettings.Current;
-                bool show = game != null && !game.IsControllerGamepad && State != null
-                    && game.RootUiContext != null && !game.RootUiContext.IsMainMenu
-                    && !Kingmaker.EntitySystem.Persistence.LoadingProcess.Instance.IsLoadingInProcess
-                    && (game.CurrentMode == GameModeType.Default || game.CurrentMode == GameModeType.Pause
-                        // The Esc menu keeps the HUD in view; on the global map there is no bar.
-                        || game.CurrentMode == GameModeType.EscMode && FindAnchor() != null)
-                    && !game.CutsceneLock
-                    // The local map keeps the default mode, so that the world goes on, but covers the HUD.
-                    && !(game.UI.ServiceWindow != null && game.UI.ServiceWindow.WindowTabs != null && game.UI.ServiceWindow.WindowTabs.IsShow);
-                if (show && State != builtFor)
-                    Fill();
-                if (row.gameObject.activeSelf != show) {
-                    row.gameObject.SetActive(show);
-                    if (!show)
-                        HideTip();
-                }
-                // Under the Esc menu the bar is seen, as the game's buttons, but not pressed.
-                bool live = game.CurrentMode != GameModeType.EscMode;
-                if (rowGroup.blocksRaycasts != live) {
-                    rowGroup.blocksRaycasts = rowGroup.interactable = live;
-                    if (!live)
-                        HideTip();
-                }
-                if (show)
-                    row.anchoredPosition = BasePosition() + new Vector2(pad.BarOffsetX, pad.BarOffsetY);
+                // The block faded or went away under the pointer: the tooltip goes with it.
+                if (tipBox != null && tipBox.activeSelf && (!seen || !BarSegment.Live))
+                    HideTip();
             } catch (Exception ex) {
                 Main.Error(ex, "PadBar.Update");
                 enabled = false;
             }
-        }
-
-        // Into the game's HUD canvas, just before its tooltips: the HUD is drawn under the bar and the tooltips over it.
-        // Until the HUD exists the bar stays on its own canvas.
-        private void AttachToHud() {
-            if (host != null || Time.unscaledTime < nextHostSearch)
-                return;
-            nextHostSearch = Time.unscaledTime + 1f;
-            var tooltips = GameObject.Find("StaticCanvas")?.transform.Find("Tooltips");
-            if (tooltips == null)
-                return;
-            host = (RectTransform)new GameObject("BI2TL_PadBarHost", typeof(RectTransform)).transform;
-            host.SetParent(tooltips.parent, false);
-            host.anchorMin = Vector2.zero;
-            host.anchorMax = Vector2.one;
-            host.offsetMin = host.offsetMax = Vector2.zero;
-            host.SetSiblingIndex(tooltips.GetSiblingIndex());
-            row.SetParent(host, false);
-            tipBox.transform.SetParent(host, false);
-            // The game's sprites came with the HUD: a bar built before it gets its frame and buttons now.
-            if (!KmButtonStyle.Ready || row.Find("Frame")?.GetComponent<Image>()?.sprite == null) {
-                KmButtonStyle.Retry();
-                var old = row.Find("Frame");
-                if (old != null)
-                    DestroyImmediate(old.gameObject);
-                MakeFrame(row);
-                row.Find("Frame").SetAsFirstSibling();
-                Fill();
-            }
-        }
-
-        // The bar sits in the bottom left corner on top of the game's two rows of menu buttons (inventory,
-        // map, formation and the rest), measured on screen so it follows the resolution and the UI scale.
-        private Vector2 BasePosition() {
-            if (FindAnchor() == null)
-                return FallbackPos;
-            var canvas = anchorBlock.GetComponentInParent<Canvas>()?.rootCanvas;
-            var cam = canvas == null || canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
-            float left = float.MaxValue, top = float.MinValue;
-            var corners = new Vector3[4];
-            foreach (var rect in anchorBlock.GetComponentsInChildren<RectTransform>(false)) {
-                if (rect != anchorBlock && rect.parent != anchorBlock)
-                    continue;
-                rect.GetWorldCorners(corners);
-                foreach (var corner in corners) {
-                    var screen = RectTransformUtility.WorldToScreenPoint(cam, corner);
-                    left = Mathf.Min(left, screen.x);
-                    top = Mathf.Max(top, screen.y);
-                }
-            }
-            var root = (RectTransform)row.parent;
-            var rootCanvas = root.GetComponentInParent<Canvas>()?.rootCanvas;
-            var rootCam = rootCanvas == null || rootCanvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : rootCanvas.worldCamera;
-            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(root, new Vector2(Mathf.Max(left, 0f), top), rootCam, out var local))
-                return FallbackPos;
-            // Right on top of the game's sheet, from the screen edge as the sheet is.
-            var pos = local - root.rect.min;
-            return new Vector2(Mathf.Max(pos.x, 0f), pos.y - FrameSink);
         }
 
         // The game's menu buttons of the local map, when they are in view.

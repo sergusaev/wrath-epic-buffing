@@ -71,6 +71,11 @@ namespace BuffIt2TheLimit {
         private static bool resolved;
         private static TMP_SpriteAsset asset;
         private static string prefix;
+        // The size of the button sprites against the text. Kingmaker's at 135% fill its line; WotR's own come out larger and
+        // run into each other, so on the first help they are measured and brought to the same height (FitIcons).
+        private static float iconPercent = 135f;
+        private static bool iconsMeasured;
+        private const float IconHeight = 1.2f;
 
         private static readonly Regex Bold = new(@"\*\*(.+?)\*\*");
         private static readonly Regex Numbered = new(@"^(\d+)\.\s+(.*)$");
@@ -126,8 +131,36 @@ namespace BuffIt2TheLimit {
                 return Letters(PadKeys.Label(action));
             Resolve();
             if (asset != null)
-                return $"<size=135%><sprite name=\"{prefix}{action}\"></size>";
+                return $"<size={iconPercent}%><sprite name=\"{prefix}{action}\"></size>";
             return Letters(Fallback(action));
+        }
+
+        // Measures the first button sprite of the text once; true when the size changed and the text is to be built again.
+        public static bool FitIcons(TMP_Text text) {
+            if (iconsMeasured || asset == null || PadSettings.KeyboardMode)
+                return false;
+            text.ForceMeshUpdate();
+            var info = text.textInfo;
+            for (int i = 0; i < info.characterCount; i++) {
+                var c = info.characterInfo[i];
+                if (c.elementType != TMP_TextElementType.Sprite)
+                    continue;
+                iconsMeasured = true;
+                float height = (c.topLeft.y - c.bottomLeft.y) / text.fontSize;
+                Main.Log($"[PAD] icons: {iconPercent}% is {height:0.00} of the text size");
+#if KINGMAKER
+                return false;
+#else
+                if (height <= 0f)
+                    return false;
+                float percent = Mathf.Round(iconPercent * IconHeight / height);
+                if (Mathf.Abs(percent - iconPercent) < 5f)
+                    return false;
+                iconPercent = percent;
+                return true;
+#endif
+            }
+            return false;
         }
 
         private static string Letters(string text) => $"<b><color={PadTheme.Accent}>[{text}]</color></b>";

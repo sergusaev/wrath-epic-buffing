@@ -13,8 +13,6 @@ namespace BuffIt2TheLimit {
 
         [JsonProperty] public bool ShowHidden;
         [JsonProperty] public PadDisplay Display = PadDisplay.Auto;
-        [JsonProperty] public int BarOffsetX;
-        [JsonProperty] public int BarOffsetY;
 
         private static PadSettings current;
 

@@ -148,7 +148,7 @@ namespace BuffIt2TheLimit {
         // help
         private GameObject helpRoot;
         private TextMeshProUGUI helpText;
-        private RectTransform helpThumb;
+        private ModBar.ModScrollbar helpBar, memberBar, editorBar, optionBar;
         private float helpOffset;
         private readonly List<int> helpSections = new();
         private readonly List<GameObject> helpRules = new();
@@ -743,7 +743,7 @@ namespace BuffIt2TheLimit {
         }
 
         private void ClickTab(PointerEventData e) {
-            int link = TMP_TextUtilities.FindIntersectingLink(tabText, e.position, null);
+            int link = TMP_TextUtilities.FindIntersectingLink(tabText, e.position, ModBar.BarLayout.Cam(tabText));
             if (link >= 0)
                 SwitchTab(tabText.textInfo.linkInfo[link].GetLinkID() == "prev" ? -1 : 1);
         }
@@ -755,7 +755,7 @@ namespace BuffIt2TheLimit {
                 return;
             var text = optRows[r].Text;
             int delta = 0;
-            int link = TMP_TextUtilities.FindIntersectingLink(text, e.position, null);
+            int link = TMP_TextUtilities.FindIntersectingLink(text, e.position, ModBar.BarLayout.Cam(text));
             if (link >= 0)
                 delta = text.textInfo.linkInfo[link].GetLinkID() == "dec" ? -1 : 1;
             else if (at == optCursor || OnValue(text, e))
@@ -770,7 +770,7 @@ namespace BuffIt2TheLimit {
         // The value column starts at 62% of the row (RenderOptions).
         private static bool OnValue(TextMeshProUGUI text, PointerEventData e) {
             var rect = text.rectTransform;
-            return RectTransformUtility.ScreenPointToLocalPointInRectangle(rect, e.position, null, out var local)
+            return RectTransformUtility.ScreenPointToLocalPointInRectangle(rect, e.position, ModBar.BarLayout.Cam(rect), out var local)
                 && local.x >= rect.rect.xMin + rect.rect.width * 0.6f;
         }
 
@@ -1356,6 +1356,7 @@ namespace BuffIt2TheLimit {
             if (memberCursor >= memberTop + MemberRows)
                 memberTop = memberCursor - MemberRows + 1;
             memberTop = Mathf.Clamp(memberTop, 0, Mathf.Max(0, memberList.Count - MemberRows));
+            memberBar.Set(memberTop, MemberRows, memberList.Count);
 
             for (int i = 0; i < memberRows.Count; i++) {
                 int at = memberTop + i;
@@ -1758,6 +1759,7 @@ namespace BuffIt2TheLimit {
             if (cursor >= top + VisibleRows)
                 top = cursor - VisibleRows + 1;
             top = Mathf.Clamp(top, 0, Mathf.Max(0, filtered.Count - VisibleRows));
+            editorBar.Set(top, VisibleRows, filtered.Count);
 
             for (int i = 0; i < listRows.Count; i++) {
                 int idx = top + i;
@@ -1919,6 +1921,7 @@ namespace BuffIt2TheLimit {
             }
             optScrolled = false;
             optTop = Mathf.Clamp(optTop, 0, Mathf.Max(0, opts.Count - OptionRows));
+            optionBar.Set(optTop, OptionRows, opts.Count);
             for (int i = 0; i < optRows.Count; i++) {
                 int at = optTop + i;
                 var row = optRows[i];
@@ -2031,16 +2034,6 @@ namespace BuffIt2TheLimit {
                 PadSettings.Save();
                 rebuildRequested = true;
             }, "pad.set.display.note".i8()));
-#if KINGMAKER
-            list.Add(Cycle("barx", "pad.set.bar.x".i8(), () => pad.BarOffsetX.ToString(), d => {
-                pad.BarOffsetX += d * 20;
-                PadSettings.Save();
-            }));
-            list.Add(Cycle("bary", "pad.set.bar.y".i8(), () => pad.BarOffsetY.ToString(), d => {
-                pad.BarOffsetY += d * 20;
-                PadSettings.Save();
-            }));
-#endif
             list.Add(Flag("hidden", Label("showhidden"), () => pad.ShowHidden, v => {
                 pad.ShowHidden = v;
                 PadSettings.Save();
@@ -2183,6 +2176,10 @@ namespace BuffIt2TheLimit {
             helpSectionOffsets = null;
             helpText.spriteAsset = PadHelp.IconAsset;
             helpText.text = PadHelp.Build(helpSections);
+            if (PadHelp.FitIcons(helpText)) {
+                helpSections.Clear();
+                helpText.text = PadHelp.Build(helpSections);
+            }
             helpOffset = 0;
             ScrollHelp(0);
             foreach (var rule in helpRules)
@@ -2231,15 +2228,9 @@ namespace BuffIt2TheLimit {
         private void ScrollHelp(float by) {
             float max = HelpMaxOffset;
             helpOffset = Mathf.Clamp(helpOffset + by, 0, max);
-            ((RectTransform)helpText.transform).anchoredPosition = new Vector2(0, helpOffset);
-            bool scrolls = max > 1f;
-            helpThumb.parent.gameObject.SetActive(scrolls);
-            if (scrolls) {
-                float visible = HelpHeight / (HelpHeight + max);
-                float start = helpOffset / (HelpHeight + max);
-                helpThumb.anchorMax = new Vector2(1, 1 - start);
-                helpThumb.anchorMin = new Vector2(0, 1 - start - visible);
-            }
+            var rect = (RectTransform)helpText.transform;
+            rect.anchoredPosition = new Vector2(rect.anchoredPosition.x, helpOffset);
+            helpBar.Set(helpOffset, HelpHeight, HelpHeight + max);
         }
 
         // LB/RB jump to the previous or next heading. Offsets are measured on first use,
@@ -2310,6 +2301,7 @@ namespace BuffIt2TheLimit {
             var canvas = overlay.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             canvas.sortingOrder = 32000;
+            ModBar.BarLayout.ThroughGameCamera(canvas);
             var scaler = overlay.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920, 1080);
@@ -2376,9 +2368,11 @@ namespace BuffIt2TheLimit {
 
             // members
             menu.membersRoot = MakeContainer(root.transform, "Members", 5);
+            var memberBox = MakeListBox(menu.membersRoot.transform, 5, out menu.memberBar);
+            menu.memberBar.Moved = first => menu.ScrollMembers(Mathf.RoundToInt(first) - menu.memberTop);
             for (int r = 0; r < MemberRows; r++) {
                 int at = r;
-                var row = MakeListRow(menu.membersRoot.transform, font, 20, withBox: true, withIcon: true);
+                var row = MakeListRow(memberBox, font, 20, withBox: true, withIcon: true);
                 row.Pointer.Click = e => menu.ClickMember(at, e);
                 row.Pointer.Live = () => menu.memberTop + at < menu.memberList.Count;
                 menu.memberRows.Add(row);
@@ -2437,9 +2431,11 @@ namespace BuffIt2TheLimit {
             menu.tabText.enableWordWrapping = false;
             AddPointer(menu.tabText.gameObject, tint: false).Click = menu.ClickTab;
             Clickable(MakeIcon(tabRow.transform, font, RewiredActionType.RightUp, 32), RewiredActionType.RightUp);
+            var editorBox = MakeListBox(menu.editorRoot.transform, 6, out menu.editorBar);
+            menu.editorBar.Moved = first => menu.ScrollEditor(Mathf.RoundToInt(first) - menu.top);
             for (int r = 0; r < VisibleRows; r++) {
                 int at = r;
-                var row = MakeListRow(menu.editorRoot.transform, font, 21, withBox: false, withIcon: true);
+                var row = MakeListRow(editorBox, font, 21, withBox: false, withIcon: true);
                 row.Pointer.Click = _ => menu.ClickEditorRow(at);
                 row.Pointer.Live = () => menu.top + at < menu.filtered.Count;
                 menu.listRows.Add(row);
@@ -2479,21 +2475,10 @@ namespace BuffIt2TheLimit {
             helpRect.anchorMax = new Vector2(1, 1);
             helpRect.pivot = new Vector2(0.5f, 1);
             helpRect.offsetMin = new Vector2(4, 0);
-            helpRect.offsetMax = new Vector2(-24, 0);
+            helpRect.offsetMax = new Vector2(-ModBar.ModScrollbar.Width - 6, 0);
             menu.helpText.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-            var track = new GameObject("Track", typeof(RectTransform));
-            track.transform.SetParent(viewport.transform, false);
-            var trackRect = (RectTransform)track.transform;
-            trackRect.anchorMin = new Vector2(1, 0);
-            trackRect.anchorMax = new Vector2(1, 1);
-            trackRect.pivot = new Vector2(1, 0.5f);
-            trackRect.sizeDelta = new Vector2(6, 0);
-            track.AddComponent<Image>().color = PadTheme.Track;
-            var thumb = new GameObject("Thumb", typeof(RectTransform));
-            thumb.transform.SetParent(track.transform, false);
-            menu.helpThumb = (RectTransform)thumb.transform;
-            menu.helpThumb.offsetMin = menu.helpThumb.offsetMax = Vector2.zero;
-            thumb.AddComponent<Image>().color = PadTheme.Thumb;
+            menu.helpBar = ModBar.ModScrollbar.Create((RectTransform)viewport.transform, PadTheme.FromBundles);
+            menu.helpBar.Moved = first => menu.ScrollHelp(first - menu.helpOffset);
             MakeHintBar(menu.helpRoot.transform, font,
                 (new[] { RewiredActionType.DPadVertical }, "pad.h.scroll"),
                 (new[] { RewiredActionType.LeftUp, RewiredActionType.RightUp }, "pad.h.section"),
@@ -2502,9 +2487,11 @@ namespace BuffIt2TheLimit {
 
             // options
             menu.optionsRoot = MakeContainer(root.transform, "Options", 5);
+            var optionBox = MakeListBox(menu.optionsRoot.transform, 5, out menu.optionBar);
+            menu.optionBar.Moved = first => menu.ScrollOptions(Mathf.RoundToInt(first) - menu.optTop);
             for (int r = 0; r < OptionRows; r++) {
                 int at = r;
-                var row = MakeListRow(menu.optionsRoot.transform, font, 20, withBox: false);
+                var row = MakeListRow(optionBox, font, 20, withBox: false);
                 row.Pointer.Click = e => menu.ClickOption(at, e);
                 row.Pointer.Live = () => menu.optTop + at < menu.opts.Count && !menu.opts[menu.optTop + at].Header;
                 menu.optRows.Add(row);
@@ -2553,6 +2540,7 @@ namespace BuffIt2TheLimit {
             rect.pivot = new Vector2(0.5f, 1);
             rect.anchoredPosition = new Vector2(0, -PadTheme.HintGap);
             rect.sizeDelta = new Vector2(0, PadTheme.HintRowHeight);
+            ModBar.AbovePortraits.Attach((RectTransform)panel, rect, PadTheme.HintGap);
             if (PadTheme.HintPlate)
                 PadTheme.HintBackground(row.AddComponent<Image>());
             var layout = row.AddComponent<HorizontalLayoutGroup>();
@@ -2672,6 +2660,15 @@ namespace BuffIt2TheLimit {
             layout.childControlHeight = true;
             layout.childForceExpandWidth = true;
             layout.childForceExpandHeight = false;
+        }
+
+        // The rows of a scrolled list in their own column, the game's scrollbar at its right.
+        private static Transform MakeListBox(Transform parent, float spacing, out ModBar.ModScrollbar bar) {
+            var go = new GameObject("Rows", typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            ConfigureVertical(go.AddComponent<VerticalLayoutGroup>(), new RectOffset(0, (int)ModBar.ModScrollbar.Width + 4, 0, 0), spacing);
+            bar = ModBar.ModScrollbar.Create((RectTransform)go.transform, PadTheme.FromBundles);
+            return go.transform;
         }
 
         private static GameObject MakeContainer(Transform parent, string name, float spacing) {

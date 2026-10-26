@@ -58,8 +58,9 @@ namespace BuffIt2TheLimit {
 #if KINGMAKER
         private const string HintSpriteName = "backHintTile";
         public const bool HintPlate = true;
-        public const float HintRowHeight = 90f;
-        public const float HintSpriteHeight = 90f;
+        // Lower in keyboard and mouse mode, over the portraits of the party.
+        public static float HintRowHeight { get { return ModBar.HintTile.RowHeight; } }
+        public static float HintSpriteHeight { get { return HintRowHeight; } }
         public const float HintSpacing = 50f;
         public const float HintLabelSize = 20f;
         public const FontStyles HintLabelStyle = FontStyles.Bold | FontStyles.UpperCase | FontStyles.SmallCaps;
@@ -82,12 +83,17 @@ namespace BuffIt2TheLimit {
         // Gap between the window and the hint row.
         public const float HintGap = 12f;
         private static Sprite hintSprite;
+#if !KINGMAKER
         private static bool hintSearched;
+#endif
 
         // The hint background: the plate (Kingmaker) or the strip behind one hint (WotR). Without the game's sprite a
         // dark translucent panel.
         public static void HintBackground(Image image) {
             image.raycastTarget = false;
+#if KINGMAKER
+            hintSprite = ModBar.HintTile.Get(HintSpriteHeight);
+#else
             if (!hintSearched || hintSprite == null) {
                 hintSearched = true;
                 try {
@@ -97,6 +103,7 @@ namespace BuffIt2TheLimit {
                     Main.Error(ex, "finding the hint background");
                 }
             }
+#endif
             if (hintSprite != null) {
                 image.sprite = hintSprite;
                 image.type = HintPlate ? Image.Type.Tiled : Image.Type.Sliced;
@@ -148,8 +155,9 @@ namespace BuffIt2TheLimit {
         public static Color Text => Paper ? PaperText : new Color(0.92f, 0.9f, 0.85f);
         public static Color Title => Paper ? PaperTitle : new Color(0.93f, 0.8f, 0.5f);
         public static Color Dim => Paper ? PaperDim : new Color(0.65f, 0.62f, 0.56f);
-        public static Color Row => Paper ? new Color(0.36f, 0.22f, 0.1f, 0.07f) : new Color(1f, 1f, 1f, 0.04f);
-        public static Color RowOutside => Paper ? new Color(0.36f, 0.22f, 0.1f, 0.025f) : new Color(1f, 1f, 1f, 0.015f);
+        // Rows are not filled: only the selected row and the one under the pointer are lit.
+        public static Color Row => Color.clear;
+        public static Color RowOutside => Color.clear;
         public static Color RowSelected => Paper ? new Color(0.55f, 0.3f, 0.1f, 0.3f) : new Color(0.62f, 0.47f, 0.2f, 0.55f);
         // Under the mouse pointer, laid over the row's own colour.
         public static Color RowHover => Paper ? new Color(0.55f, 0.3f, 0.1f, 0.14f) : new Color(0.93f, 0.8f, 0.5f, 0.14f);
@@ -313,7 +321,7 @@ namespace BuffIt2TheLimit {
         }
 
         // WotR keeps its UI sprites in the loaded "ui" asset bundle; they are not in memory until a view uses them.
-        private static Sprite FromBundles(string name) {
+        internal static Sprite FromBundles(string name) {
             foreach (var bundle in AssetBundle.GetAllLoadedAssetBundles()) {
                 try {
                     if (bundle.isStreamedSceneAssetBundle)
