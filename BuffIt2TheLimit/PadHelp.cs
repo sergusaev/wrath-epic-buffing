@@ -28,6 +28,8 @@ namespace BuffIt2TheLimit {
         public static readonly KeyCode[] Down = { KeyCode.DownArrow, KeyCode.S };
         public static readonly KeyCode[] Left = { KeyCode.LeftArrow, KeyCode.A };
         public static readonly KeyCode[] Right = { KeyCode.RightArrow, KeyCode.D };
+        // A held right stick deletes a custom group; on the keyboard it is a press of Delete.
+        public static readonly KeyCode[] Delete = { KeyCode.Delete };
 
         public static KeyCode[] For(RewiredActionType action) => action switch {
             RewiredActionType.Confirm => Confirm,
@@ -40,6 +42,7 @@ namespace BuffIt2TheLimit {
             RewiredActionType.DPadDown => Down,
             RewiredActionType.DPadLeft => Left,
             RewiredActionType.DPadRight => Right,
+            RewiredActionType.RightStickButton => Delete,
             _ => new KeyCode[0]
         };
 
@@ -50,6 +53,7 @@ namespace BuffIt2TheLimit {
             RewiredActionType.DPadDown => "S",
             RewiredActionType.DPadLeft => "A",
             RewiredActionType.DPadRight => "D",
+            RewiredActionType.RightStickButton => "Del",
             _ => For(action).Length > 0 ? For(action)[0].ToString() : action.ToString()
         };
 
@@ -176,6 +180,7 @@ namespace BuffIt2TheLimit {
             RewiredActionType.DPadDown => "↓",
             RewiredActionType.DPadLeft => "←",
             RewiredActionType.DPadRight => "›",
+            RewiredActionType.RightStickButton => "R3",
             _ => action.ToString()
         };
 
@@ -201,6 +206,7 @@ namespace BuffIt2TheLimit {
                 "DOWN" => Button(RewiredActionType.DPadDown),
                 "LEFT" => Button(RewiredActionType.DPadLeft),
                 "RIGHT" => Button(RewiredActionType.DPadRight),
+                "R3" => Button(RewiredActionType.RightStickButton),
                 "G1" => PadGroups.Name(BuffGroup.Long),
                 "G2" => PadGroups.Name(BuffGroup.Quick),
                 "G3" => PadGroups.Name(BuffGroup.Important),

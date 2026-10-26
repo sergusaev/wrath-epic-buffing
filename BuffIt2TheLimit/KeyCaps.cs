@@ -217,7 +217,8 @@ namespace ModBar
             void OnEnable()
             {
                 var text = GetComponent<TextMeshProUGUI>();
-                if (text == null) return;
+                // Added to an active object, it wakes before its size is given: the text keeps the size it was made with.
+                if (text == null || Size <= 0f) return;
                 text.enableAutoSizing = false;
                 text.fontSize = Size;
                 text.fontStyle = FontStyles.Bold;
@@ -321,6 +322,7 @@ namespace ModBar
                 image.raycastTarget = false;
                 var label = Label(go.transform, name, height, text.font);
                 label.fontSize = first.pointSize;
+                label.GetComponent<Kept>().Size = first.pointSize;
             }
         }
     }

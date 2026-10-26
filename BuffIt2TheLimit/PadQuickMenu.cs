@@ -19,13 +19,16 @@ using UnityEngine.UI;
 
 namespace BuffIt2TheLimit {
 
-    // The buff menu, the only buff screen of the mod in both control modes.
-    // Main: per-group status, apply one group or all groups in sequence, combat toggle, cast report.
-    // Groups: list of groups, create / rename / hide / delete.
-    // Members: buffs of one group, add and remove, on/off tick, auto-fill by duration.
-    // Name: on-screen keyboard for a group name and its duration.
-    // Editor: targets per party member for each buff.
-    // Options: mod settings, or settings of one buff and its casters.
+    // The buff menu, the only buff screen of the mod in both control modes. Tabs as in the other mod windows, switched
+    // with LB/RB (X/C on the keyboard) or a click on a name:
+    // Cast (Main): per-group status, apply one group or all groups in sequence, combat toggle, cast report.
+    // Buffs (Editor): targets per party member for each buff; the first row chooses which buffs are listed.
+    // Groups: list of groups, create / rename / hide.
+    // Settings (Options): mod settings.
+    // Help.
+    // Opened from a tab and closed with B back to it: Members (buffs of one group, add and remove, on/off tick,
+    // auto-fill by duration, delete the group), Name (on-screen keyboard for a group name and its duration), the
+    // targets of a buff from Members (Editor) and the settings of one buff and its casters (Options).
     // Gamepad buttons go through the game's console input layer (the world and HUD are blocked while
     // the menu is open); directions are polled from the Rewired player for hold-to-repeat.
     // Start and Esc bring the game's menu over the buff menu, as over the game's own windows; the buff menu hides
@@ -55,7 +58,6 @@ namespace BuffIt2TheLimit {
         private static Color TextColor => PadTheme.Text;
         private static Color DimColor => PadTheme.Dim;
 
-        private const float MainWidth = 1100f;
         private const float WideWidth = 1320f;
         private const int VisibleRows = 10;
         private const int MemberRows = 12;
@@ -63,7 +65,8 @@ namespace BuffIt2TheLimit {
         private const float RepeatDelay = 0.35f;
         private const float RepeatInterval = 0.08f;
         private const float RoutineTimeout = 30f;
-        private const float DeleteConfirmTime = 3f;
+        // Holding the right stick this long asks to delete the selected custom group.
+        private const float DeleteHoldTime = 0.6f;
         private const int OptionRows = 13;
         private const float IconSize = 30f;
         private const int WheelRows = 3;
@@ -74,6 +77,10 @@ namespace BuffIt2TheLimit {
         private Canvas overlayCanvas;
         private RectTransform panel;
         private TextMeshProUGUI titleText;
+        // The tab row under the title, on the tabs only.
+        private GameObject tabRow;
+        private TextMeshProUGUI tabsText;
+        private int topTab;
         private TMP_FontAsset font;
         private IDisposable layerHandle;
         private Kingmaker.UI.KeyboardAccess blockedKeyboard;
@@ -100,9 +107,16 @@ namespace BuffIt2TheLimit {
         private List<BuffGroup> groupList = new();
         private TextMeshProUGUI groupsNote;
         private int groupsCursor;
-        private BuffGroup? deleteArmed;
+        // A custom group is deleted after a long press of the right stick (Del or a click on the hint) and a yes in
+        // the confirmation over the window.
         private GameObject groupsDeleteHint;
-        private float deleteArmedUntil;
+        // The ring around the R3 icon fills while the stick is held.
+        private Image deleteHoldFill;
+        private float deleteHeldSince = -1f;
+        private bool deleteHoldFired;
+        private GameObject confirmRoot;
+        private TextMeshProUGUI confirmText;
+        private BuffGroup? confirmGroup;
 
         // members
         private GameObject membersRoot;
@@ -133,7 +147,11 @@ namespace BuffIt2TheLimit {
 
         // editor
         private GameObject editorRoot;
-        private TextMeshProUGUI tabText;
+        // "Show": which buffs the list holds, a choice in the look of the settings above it.
+        private ListRow filterRow;
+        private bool onFilter;
+        private GameObject editorTabHint;
+        private TextMeshProUGUI editorBackLabel;
         private readonly List<ListRow> listRows = new();
         private TextMeshProUGUI detailText;
         private Transform chipHolder;
@@ -182,6 +200,8 @@ namespace BuffIt2TheLimit {
         private Func<List<Opt>> optSource;
         private string optTitle;
         private Page optBack;
+        private GameObject optionsTabHint;
+        private TextMeshProUGUI optionsBackLabel;
         private int optCursor;
         private int optTop;
         private bool rebuildRequested;
@@ -200,11 +220,10 @@ namespace BuffIt2TheLimit {
         private readonly List<string> report = new();
 
         private int CombatRow => mainGroups.Count;
-        private int GroupsRow => mainGroups.Count + 1;
-        private int EditorRow => mainGroups.Count + 2;
-        private int SettingsRow => mainGroups.Count + 3;
-        private int HelpRow => mainGroups.Count + 4;
-        private int MainRowCount => mainGroups.Count + 5;
+        private int MainRowCount => mainGroups.Count + 1;
+
+        private const int Tabs = 5;
+        private const int CastTab = 0, BuffsTab = 1, GroupsTab = 2, SettingsTab = 3, HelpTab = 4;
 
         private static BufferState State => GlobalBubbleBuffer.Instance?.SpellbookController?.state;
 
@@ -355,11 +374,8 @@ namespace BuffIt2TheLimit {
                     RunNext();
                 }
 
-                if (deleteArmed != null && Time.unscaledTime > deleteArmedUntil) {
-                    deleteArmed = null;
-                    if (page == Page.Groups)
-                        RenderGroups();
-                }
+                if (!covered && Time.frameCount > ignoreInputUntil)
+                    PollDeleteHold();
 
                 if (page == Page.Main && Time.unscaledTime >= nextRefresh)
                     RefreshMain();
@@ -456,6 +472,8 @@ namespace BuffIt2TheLimit {
                 var a = action;
                 layer.AddButton(_ => MarkDPad(a), (int)a, Rewired.InputActionEventType.ButtonPressed);
             }
+            // Held, the right stick deletes a group (PollDeleteHold); bound here so the layers under the menu skip it.
+            layer.AddButton(_ => { }, (int)RewiredActionType.RightStickButton);
             layer.AddAxis2D((_, v) => MarkStick(v), (int)RewiredActionType.LeftStickX, (int)RewiredActionType.LeftStickY, false);
             layerHandle = pad.PushLayer(layer);
 #if KINGMAKER
@@ -488,6 +506,13 @@ namespace BuffIt2TheLimit {
             if (firedFrame.TryGetValue(action, out var last) && frame - last <= 2)
                 return;
             firedFrame[action] = frame;
+            if (confirmGroup != null) {
+                if (action == RewiredActionType.Confirm)
+                    AnswerDelete(true);
+                else if (action == RewiredActionType.Decline)
+                    AnswerDelete(false);
+                return;
+            }
             if (padLogLines < 200) {
                 padLogLines++;
                 Main.Verbose($"[PAD] {action} via {source}, page={page}");
@@ -567,8 +592,8 @@ namespace BuffIt2TheLimit {
             }
             if (Input.GetKeyDown(KeyCode.Escape) && !Game.Instance.IsControllerGamepad)
                 OpenGameMenu();
-            if (Input.GetKeyDown(KeyCode.Delete) && page == Page.Groups)
-                DeleteGroup();
+            if (Input.GetKeyDown(KeyCode.Delete) && page == Page.Groups && confirmGroup == null)
+                AskDelete();
             if (Input.GetKeyDown(KeyCode.Home))
                 JumpTo(first: true);
             if (Input.GetKeyDown(KeyCode.End))
@@ -616,6 +641,7 @@ namespace BuffIt2TheLimit {
                     RenderMembers();
                     break;
                 case Page.Editor:
+                    onFilter = first && filtered.Count == 0;
                     cursor = Mathf.Clamp(edge, 0, Mathf.Max(0, filtered.Count - 1));
                     RenderEditor();
                     break;
@@ -639,6 +665,11 @@ namespace BuffIt2TheLimit {
 
         // A click on a button hint or icon does what the button does.
         private void Press(RewiredActionType button) {
+            if (button == RewiredActionType.RightStickButton) {
+                if (confirmGroup == null && page == Page.Groups)
+                    AskDelete();
+                return;
+            }
             if (button == RewiredActionType.DPadRight) {
                 MoveHorizontal(1);
                 return;
@@ -648,7 +679,7 @@ namespace BuffIt2TheLimit {
 
         // The wheel moves the visible part of a list by a few rows and takes the cursor along, so it stays in view.
         private void OnWheel(float y) {
-            if (Mathf.Abs(y) < 0.01f)
+            if (Mathf.Abs(y) < 0.01f || confirmGroup != null)
                 return;
             int delta = y > 0 ? -WheelRows : WheelRows;
             switch (page) {
@@ -697,7 +728,7 @@ namespace BuffIt2TheLimit {
             RenderOptions();
         }
 
-        // Group rows cast, so the first click only selects them; the other rows open a page or flip a setting at once.
+        // Group rows cast, so the first click only selects them; "cast in combat" flips at once.
         private void ClickMain(int i, PointerEventData e) {
             if (i >= MainRowCount)
                 return;
@@ -739,24 +770,41 @@ namespace BuffIt2TheLimit {
         // A row only selects the buff; its targets are switched on the party members below it.
         private void ClickEditorRow(int r) {
             int at = top + r;
-            if (at >= filtered.Count || at == cursor)
+            if (at >= filtered.Count || at == cursor && !onFilter)
                 return;
             cursor = at;
+            onFilter = false;
             RenderEditor();
+        }
+
+        // A click on the "show" row selects it, a click on its value steps it forth.
+        private void ClickFilter(PointerEventData e) {
+            bool act = onFilter || OnValue(filterRow.Text, e);
+            onFilter = true;
+            if (act)
+                SwitchTab(1);
+            else
+                RenderEditor();
+        }
+
+        private void StepFilter(int direction) {
+            onFilter = true;
+            SwitchTab(direction);
         }
 
         private void ClickChip(int i) {
             if (i >= Party.Count)
                 return;
             partyCol = i;
+            onFilter = false;
             RenderEditor();
             ToggleTarget();
         }
 
-        private void ClickTab(PointerEventData e) {
-            int link = TMP_TextUtilities.FindIntersectingLink(tabText, e.position, ModBar.BarLayout.Cam(tabText));
+        private void ClickTabs(PointerEventData e) {
+            int link = TMP_TextUtilities.FindIntersectingLink(tabsText, e.position, ModBar.BarLayout.Cam(tabsText));
             if (link >= 0)
-                SwitchTab(tabText.textInfo.linkInfo[link].GetLinkID() == "prev" ? -1 : 1);
+                OpenTab(int.Parse(tabsText.textInfo.linkInfo[link].GetLinkID()));
         }
 
         // The arrows of a value step it back or forth; a click on the value, or a second click on the row, steps it forth.
@@ -881,6 +929,8 @@ namespace BuffIt2TheLimit {
 
             int dv = vertical.Step(v);
             int dh = horizontal.Step(h);
+            if (confirmGroup != null)
+                return;
             if (dv != 0) MoveVertical(dv);
             if (dh != 0) MoveHorizontal(dh);
         }
@@ -892,14 +942,6 @@ namespace BuffIt2TheLimit {
                         Enqueue(new[] { mainGroups[selected] });
                     else if (selected == CombatRow)
                         ToggleAllowInCombat();
-                    else if (selected == GroupsRow)
-                        ShowPage(Page.Groups);
-                    else if (selected == EditorRow)
-                        OpenEditor(Page.Main, null);
-                    else if (selected == SettingsRow)
-                        OpenGlobalOptions(Page.Main);
-                    else if (selected == HelpRow)
-                        ShowPage(Page.Help);
                     break;
                 case Page.Groups:
                     if (groupsCursor < groupList.Count)
@@ -909,29 +951,26 @@ namespace BuffIt2TheLimit {
                     break;
                 case Page.Members: ToggleMembership(); break;
                 case Page.Name: PressKey(); break;
-                case Page.Editor: ToggleTarget(); break;
+                case Page.Editor:
+                    if (onFilter)
+                        SwitchTab(1);
+                    else
+                        ToggleTarget();
+                    break;
                 case Page.Options: ChangeOption(1); break;
             }
         }
 
         private void OnDecline() {
+            if (OnTab) {
+                Close();
+                return;
+            }
             switch (page) {
-                case Page.Main: Close(); break;
                 case Page.Members: ShowPage(membersBack); break;
                 case Page.Name: ShowPage(Page.Groups); break;
-                case Page.Editor:
-                    if (editorBack == Page.Members)
-                        OpenMembers(memberGroup, membersBack, SelectedBuff);
-                    else
-                        ShowPage(editorBack);
-                    break;
-                case Page.Options:
-                    if (optBack == Page.Members)
-                        OpenMembers(memberGroup, membersBack, SelectedMember);
-                    else
-                        ShowPage(optBack);
-                    break;
-                default: ShowPage(Page.Main); break;
+                case Page.Editor: OpenMembers(memberGroup, membersBack, SelectedBuff); break;
+                case Page.Options: OpenMembers(memberGroup, membersBack, SelectedMember); break;
             }
         }
 
@@ -941,7 +980,10 @@ namespace BuffIt2TheLimit {
                 case Page.Groups: ToggleHidden(); break;
                 case Page.Members: ToggleTick(); break;
                 case Page.Name: Backspace(); break;
-                case Page.Editor: AutoTargets(); break;
+                case Page.Editor:
+                    if (!onFilter)
+                        AutoTargets();
+                    break;
             }
         }
 
@@ -953,22 +995,25 @@ namespace BuffIt2TheLimit {
                     break;
                 case Page.Members: AutoFill(); break;
                 case Page.Name: FinishName(); break;
-                case Page.Editor: ToggleWholeParty(); break;
+                case Page.Editor:
+                    if (!onFilter)
+                        ToggleWholeParty();
+                    break;
             }
         }
 
+        // On a tab LB/RB switch tabs; the pages opened from a tab keep them for their own use.
         private void OnShoulder(int delta) {
+            if (OnTab) {
+                OpenTab(topTab + delta);
+                return;
+            }
             switch (page) {
-                case Page.Groups:
-                    if (delta > 0) DeleteGroup();
-                    break;
                 case Page.Members:
                     if (delta > 0 && SelectedMember != null)
                         OpenBuffOptions(SelectedMember);
                     break;
                 case Page.Name: CycleDuration(delta); break;
-                case Page.Editor: SwitchTab(delta); break;
-                case Page.Help: JumpSection(delta); break;
             }
         }
 
@@ -994,9 +1039,17 @@ namespace BuffIt2TheLimit {
                     RenderKeys();
                     break;
                 case Page.Editor:
-                    if (filtered.Count == 0)
-                        return;
-                    cursor = Mathf.Clamp(cursor + delta, 0, filtered.Count - 1);
+                    // The "show" row is above the first buff.
+                    if (onFilter) {
+                        if (delta < 0 || filtered.Count == 0)
+                            return;
+                        onFilter = false;
+                        cursor = 0;
+                    } else if (delta < 0 && cursor == 0 || filtered.Count == 0) {
+                        onFilter = true;
+                    } else {
+                        cursor = Mathf.Clamp(cursor + delta, 0, filtered.Count - 1);
+                    }
                     RenderEditor();
                     break;
                 case Page.Help: ScrollHelp(delta * HelpStep); break;
@@ -1015,11 +1068,64 @@ namespace BuffIt2TheLimit {
                     keyCol = Mathf.Clamp(keyCol + delta, 0, keys[keyRow].Count - 1);
                     RenderKeys();
                     break;
-                case Page.Editor: MovePartyCursor(delta); break;
+                case Page.Editor:
+                    if (onFilter)
+                        SwitchTab(delta);
+                    else
+                        MovePartyCursor(delta);
+                    break;
+                case Page.Help: JumpSection(delta); break;
             }
         }
 
         // ---------- pages ----------
+
+        // The page is a tab itself, not one opened from a tab.
+        private bool OnTab => page switch {
+            Page.Main or Page.Groups or Page.Help => true,
+            Page.Editor => editorBack != Page.Members,
+            Page.Options => optBack != Page.Members,
+            _ => false
+        };
+
+        private static string TabName(int i) => (i switch {
+            CastTab => "pad.tab.cast",
+            BuffsTab => "pad.tab.buffs",
+            GroupsTab => "pad.groups.row",
+            SettingsTab => "pad.settings.row",
+            _ => "pad.help.row"
+        }).i8();
+
+        private void OpenTab(int i) {
+            switch ((i % Tabs + Tabs) % Tabs) {
+                case CastTab: ShowPage(Page.Main); break;
+                case BuffsTab: OpenEditor(Page.Main, null); break;
+                case GroupsTab: ShowPage(Page.Groups); break;
+                case SettingsTab: OpenGlobalOptions(Page.Main); break;
+                default: ShowPage(Page.Help); break;
+            }
+        }
+
+        // The current tab is bold. A page opened from a tab has no tab row.
+        private void RenderTabs() {
+            if (OnTab)
+                topTab = page switch {
+                    Page.Main => CastTab,
+                    Page.Editor => BuffsTab,
+                    Page.Groups => GroupsTab,
+                    Page.Options => SettingsTab,
+                    _ => HelpTab
+                };
+            var text = new System.Text.StringBuilder();
+            for (int i = 0; i < Tabs; i++) {
+                if (i > 0)
+                    text.Append($"<color={PadTheme.Faint}>   ·   </color>");
+                string name = i == topTab ? $"<b><color={PadTheme.Accent}>{TabName(i)}</color></b>" : TabName(i);
+                text.Append($"<link=\"{i}\">{name}</link>");
+            }
+            tabsText.text = text.ToString();
+            tabRow.SetActive(OnTab);
+        }
 
         private void ShowPage(Page next) {
             page = next;
@@ -1031,27 +1137,34 @@ namespace BuffIt2TheLimit {
             editorRoot.SetActive(page == Page.Editor);
             helpRoot.SetActive(page == Page.Help);
             optionsRoot.SetActive(page == Page.Options);
-            panel.sizeDelta = new Vector2(page == Page.Main ? MainWidth : WideWidth, 0);
-            titleText.text = PadTheme.Initial(page switch {
-                Page.Main => "pad.title".i8(),
-                Page.Groups => "pad.groups.title".i8(),
+            titleText.text = PadTheme.Initial(OnTab ? "pad.title".i8() : page switch {
                 Page.Members => string.Format("pad.members.title".i8(), PadGroups.Name(memberGroup)),
                 Page.Name => nameTarget == null ? "pad.name.title.new".i8() : "pad.name.title.rename".i8(),
                 Page.Editor => "pad.editor.title".i8(),
-                Page.Options => optTitle,
-                _ => "pad.help.title".i8()
+                _ => optTitle
             });
+            // Made while the menu was hidden, so Kingmaker gave it the default alignment on waking.
+            titleText.alignment = TextAlignmentOptions.Center;
+            RenderTabs();
+            // B closes the menu on a tab and goes back to the tab from a page opened from it.
+            string back = (OnTab ? "pad.h.close" : "pad.h.back").i8();
+            editorTabHint.SetActive(OnTab);
+            editorBackLabel.text = back;
+            optionsTabHint.SetActive(OnTab);
+            optionsBackLabel.text = back;
             EnsureBuffList();
             switch (page) {
                 case Page.Main: RefreshMain(); break;
                 case Page.Groups:
                     groupsNote.text = "";
-                    deleteArmed = null;
                     RenderGroups();
                     break;
                 case Page.Members: RebuildMembers(null); break;
                 case Page.Name: RenderName(); break;
-                case Page.Editor: RebuildFilter(keepBuff: null); break;
+                case Page.Editor:
+                    onFilter = false;
+                    RebuildFilter(keepBuff: null);
+                    break;
                 case Page.Help:
                     OpenHelp();
                     break;
@@ -1169,8 +1282,7 @@ namespace BuffIt2TheLimit {
                 rows[i].Bg.color = i == selected ? RowSelectedColor : RowColor;
             if (mainConfirmLabel != null && mainGroups != null)
                 mainConfirmLabel.text = (selected < mainGroups.Count ? "pad.h.apply"
-                    : selected == CombatRow ? (State?.AllowInCombat == true ? "pad.h.disable" : "pad.h.enable")
-                    : "pad.h.open").i8();
+                    : State?.AllowInCombat == true ? "pad.h.disable" : "pad.h.enable").i8();
         }
 
         private void RefreshMain() {
@@ -1183,10 +1295,6 @@ namespace BuffIt2TheLimit {
 
                 var state = State;
                 rows[CombatRow].Text.text = CombatRowText(state);
-                rows[GroupsRow].Text.text = Line("pad.groups.row".i8(), "pad.groups.row.desc".i8());
-                rows[EditorRow].Text.text = Line("pad.editor.row".i8(), "pad.editor.row.desc".i8());
-                rows[SettingsRow].Text.text = Line("pad.settings.row".i8(), "pad.settings.row.desc".i8());
-                rows[HelpRow].Text.text = Line("pad.help.row".i8(), "pad.help.row.desc".i8());
                 if (state?.BuffList == null) {
                     for (int i = 0; i < mainGroups.Count; i++)
                         rows[i].Text.text = Line(PadGroups.Name(mainGroups[i]), "pad.nostate".i8());
@@ -1271,36 +1379,34 @@ namespace BuffIt2TheLimit {
             groupList = PadGroups.All();
             EnsureRows(groupRows, groupsRowHolder, GroupsRowCount, 21, withBox: false, ClickGroup);
             groupsCursor = Mathf.Clamp(groupsCursor, 0, GroupsRowCount - 1);
-            // Only custom groups can be deleted, so RB is offered only on them.
-            if (groupsDeleteHint != null)
-                groupsDeleteHint.SetActive(groupsCursor < groupList.Count && PadGroups.IsCustom(groupList[groupsCursor]));
+            // Only custom groups can be deleted, so the hint is offered only on them.
+            groupsDeleteHint.SetActive(CursorOnCustom);
             var state = State;
             for (int i = 0; i < groupRows.Count; i++) {
                 var row = groupRows[i];
                 row.Bg.color = i == groupsCursor ? RowSelectedColor : RowColor;
-                if (i >= groupList.Count) {
+                var group = i < groupList.Count ? groupList[i] : (BuffGroup?)null;
+                bool custom = group != null && PadGroups.IsCustom(group.Value);
+                if (group == null) {
                     row.Text.text = $"<color={PadTheme.Good}><b>+ {"pad.groups.new".i8()}</b></color>";
                     continue;
                 }
-                var group = groupList[i];
                 int members = 0, on = 0;
                 if (state?.BuffList != null) {
                     foreach (var buff in state.BuffList) {
-                        if (!PadGroups.IsMember(buff, group))
+                        if (!PadGroups.IsMember(buff, group.Value))
                             continue;
                         members++;
-                        if (buff.ActiveIn(group))
+                        if (buff.ActiveIn(group.Value))
                             on++;
                     }
                 }
-                string visibility = PadGroups.IsHidden(group)
+                string visibility = PadGroups.IsHidden(group.Value)
                     ? $"<color={PadTheme.Muted}>{"pad.groups.hidden".i8()}</color>"
                     : "pad.groups.shown".i8();
-                string kind = PadGroups.IsCustom(group) ? "" : $" <color={PadTheme.Muted}>{"pad.groups.builtin".i8()}</color>";
-                string name = deleteArmed == group
-                    ? $"<color={PadTheme.Bad}>{T("pad.groups.confirm")}</color>"
-                    : $"<b>{Trim(PadGroups.Name(group), PadGroups.IsCustom(group) ? CustomNameColumn : 40)}</b>{kind}";
-                row.Text.text = $"{name}<pos=47%><size=85%>{PadGroups.DurationName(PadGroups.DurationOf(group))}</size>"
+                string kind = custom ? "" : $" <color={PadTheme.Muted}>{"pad.groups.builtin".i8()}</color>";
+                string name = $"<b>{Trim(PadGroups.Name(group.Value), custom ? CustomNameColumn : 40)}</b>{kind}";
+                row.Text.text = $"{name}<pos=47%><size=85%>{PadGroups.DurationName(PadGroups.DurationOf(group.Value))}</size>"
                     + $"<pos=70%><size=85%>{string.Format("pad.groups.count".i8(), members, on)}</size><pos=88%><size=85%>{visibility}</size>";
             }
         }
@@ -1313,24 +1419,53 @@ namespace BuffIt2TheLimit {
             RenderGroups();
         }
 
-        // RB once arms the deletion, a second RB within a few seconds deletes.
-        private void DeleteGroup() {
-            if (groupsCursor >= groupList.Count)
-                return;
-            var group = groupList[groupsCursor];
-            if (!PadGroups.IsCustom(group)) {
-                groupsNote.text = T("pad.groups.nodelete");
+        private bool CursorOnCustom => groupsCursor < groupList.Count && PadGroups.IsCustom(groupList[groupsCursor]);
+
+        // The right stick held on a custom group asks once; it asks again only after a release.
+        private void PollDeleteHold() {
+            bool held = false;
+            if (page == Page.Groups && Game.Instance.IsControllerGamepad) {
+                try {
+                    held = GamePad.Instance?.Player?.GetButton((int)RewiredActionType.RightStickButton) == true;
+                } catch (Exception) { }
+            }
+            if (!held) {
+                deleteHeldSince = -1f;
+                deleteHoldFired = false;
+                if (deleteHoldFill != null)
+                    deleteHoldFill.fillAmount = 0f;
                 return;
             }
-            if (deleteArmed != group) {
-                deleteArmed = group;
-                deleteArmedUntil = Time.unscaledTime + DeleteConfirmTime;
-                RenderGroups();
-                return;
+            if (deleteHeldSince < 0)
+                deleteHeldSince = Time.unscaledTime;
+            if (deleteHoldFill != null)
+                deleteHoldFill.fillAmount = !CursorOnCustom || deleteHoldFired ? 0f : Mathf.Clamp01((Time.unscaledTime - deleteHeldSince) / DeleteHoldTime);
+            if (!deleteHoldFired && confirmGroup == null && Time.unscaledTime - deleteHeldSince >= DeleteHoldTime) {
+                deleteHoldFired = true;
+                AskDelete();
             }
-            string name = PadGroups.Name(group);
-            deleteArmed = null;
-            PadGroups.Delete(group);
+        }
+
+        private void AskDelete() {
+            if (!CursorOnCustom)
+                return;
+            confirmGroup = groupList[groupsCursor];
+            confirmText.text = string.Format("pad.groups.ask".i8(), PadGroups.Name(confirmGroup.Value));
+            // Kingmaker gives a text made on an inactive object its default settings when it wakes.
+            confirmText.alignment = TextAlignmentOptions.Center;
+            confirmRoot.SetActive(true);
+            confirmRoot.transform.SetAsLastSibling();
+        }
+
+        private void AnswerDelete(bool yes) {
+            var group = confirmGroup;
+            confirmGroup = null;
+            confirmRoot.SetActive(false);
+            holdDirections = true;
+            if (!yes || group == null)
+                return;
+            string name = PadGroups.Name(group.Value);
+            PadGroups.Delete(group.Value);
             groupsNote.text = string.Format("pad.groups.deleted".i8(), name);
             RenderGroups();
         }
@@ -1658,12 +1793,12 @@ namespace BuffIt2TheLimit {
         }
 
         private static string EditorTabName(List<BuffGroup?> tabs, int i) =>
-            i == 0 ? "pad.tab.assigned".i8() : i == 1 ? "pad.tab.all".i8() : PadGroups.Name(tabs[i].Value);
+            i == 0 ? "pad.tab.all".i8() : i == 1 ? "pad.tab.assigned".i8() : PadGroups.Name(tabs[i].Value);
 
         private void OpenEditor(Page back, BubbleBuff buff) {
             editorBack = back;
             if (buff != null)
-                tab = 1;
+                tab = 0;
             ShowPage(Page.Editor);
             if (buff != null)
                 RebuildFilter(buff);
@@ -1679,9 +1814,9 @@ namespace BuffIt2TheLimit {
             if (!PadSettings.Current.ShowHidden && buff.HideBecause(HideReason.Blacklisted))
                 return false;
             if (tab == 0)
-                return buff.Requested > 0;
-            if (tab == 1)
                 return true;
+            if (tab == 1)
+                return buff.Requested > 0;
             return PadGroups.IsMember(buff, tabs[tab].Value);
         }
 
@@ -1773,10 +1908,18 @@ namespace BuffIt2TheLimit {
             if (partyCol >= party.Count)
                 partyCol = Mathf.Max(0, party.Count - 1);
 
+            // The choice keeps the width of its longest word while stepping, as the plates of the settings.
             var tabs = EditorTabs;
-            string prev = EditorTabName(tabs, (tab - 1 + tabs.Count) % tabs.Count);
-            string next = EditorTabName(tabs, (tab + 1) % tabs.Count);
-            tabText.text = $"<link=\"prev\"><color={PadTheme.Muted}>{Trim(prev, 22)}</color></link>    <color={PadTheme.Accent}><b>{EditorTabName(tabs, tab)}</b></color>    <link=\"next\"><color={PadTheme.Muted}>{Trim(next, 22)}</color></link>";
+            filterRow.Bg.color = onFilter ? RowSelectedColor : RowColor;
+            filterRow.Text.text = "pad.show".i8();
+            // Measured on the shown control: TMP measures a text of an inactive object with the wrong font size.
+            filterRow.Control.Least = 0f;
+            filterRow.Control.SetChoice(Trim(EditorTabName(tabs, tab), 30));
+            float least = 0f;
+            for (int i = 0; i < tabs.Count; i++)
+                least = Mathf.Max(least, filterRow.Control.Need(Trim(EditorTabName(tabs, i), 30)));
+            filterRow.Control.Least = least;
+            filterRow.Control.SetChoice(Trim(EditorTabName(tabs, tab), 30));
 
             if (cursor < top)
                 top = cursor;
@@ -1795,7 +1938,7 @@ namespace BuffIt2TheLimit {
                     continue;
                 }
                 var buff = filtered[idx];
-                row.Bg.color = idx == cursor ? RowSelectedColor : RowColor;
+                row.Bg.color = idx == cursor && !onFilter ? RowSelectedColor : RowColor;
                 row.SetIcon(buff.Icon);
                 var targetable = party.Where(buff.CanTarget).ToList();
                 int wanted = targetable.Count(buff.UnitWants);
@@ -1829,7 +1972,7 @@ namespace BuffIt2TheLimit {
                 var unit = party[i];
                 bool can = selectedBuff != null && selectedBuff.CanTarget(unit);
                 bool wants = selectedBuff != null && selectedBuff.UnitWants(unit);
-                bool atCursor = i == partyCol;
+                bool atCursor = i == partyCol && !onFilter;
                 bg.color = atCursor ? (wants ? ChipCursorWantedColor : ChipCursorColor) : (wants ? ChipWantedColor : ChipColor);
                 string name = Trim(unit.CharacterName, 11);
                 text.text = can ? name : $"<color={PadTheme.Blocked}><s>{name}</s></color>";
@@ -2289,7 +2432,7 @@ namespace BuffIt2TheLimit {
             helpBar.Set(helpOffset, HelpHeight, HelpHeight + max);
         }
 
-        // LB/RB jump to the previous or next heading. Offsets are measured on first use,
+        // Left/right jump to the previous or next heading. Offsets are measured on first use,
         // when the text already has its final width.
         private void JumpSection(int delta) {
             if (helpSectionOffsets == null) {
@@ -2381,7 +2524,7 @@ namespace BuffIt2TheLimit {
             var rect = (RectTransform)root.transform;
             rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
             rect.anchoredPosition = new Vector2(0, (PadTheme.HintGap + PadTheme.HintRowHeight) / 2);
-            rect.sizeDelta = new Vector2(MainWidth, 0);
+            rect.sizeDelta = new Vector2(WideWidth, 0);
 
             PadTheme.Panel(root.AddComponent<Image>());
             ConfigureVertical(root.AddComponent<VerticalLayoutGroup>(), PadTheme.Paper ? PadTheme.PanelPadding : new RectOffset(28, 28, 22, 22), 10);
@@ -2395,7 +2538,16 @@ namespace BuffIt2TheLimit {
             menu.panel = rect;
             menu.font = font;
             menu.titleText = MakeText(root.transform, font, PadTheme.Initial("pad.title".i8()), 30, FontStyles.Bold, TitleColor);
+            menu.titleText.alignment = TextAlignmentOptions.Center;
             PadTheme.Separator(root.transform);
+
+            // tabs, as in the other mod windows
+            menu.tabRow = MakeHorizontal(root.transform, "Tabs", 16, TextAnchor.MiddleCenter);
+            Clickable(MakeIcon(menu.tabRow.transform, font, RewiredActionType.LeftUp, 32), RewiredActionType.LeftUp);
+            menu.tabsText = MakeText(menu.tabRow.transform, font, "", 22, FontStyles.Normal, TextColor);
+            menu.tabsText.enableWordWrapping = false;
+            AddPointer(menu.tabsText.gameObject, tint: false).Click = e => menu.ClickTabs(e);
+            Clickable(MakeIcon(menu.tabRow.transform, font, RewiredActionType.RightUp, 32), RewiredActionType.RightUp);
 
             // main
             menu.mainRoot = MakeContainer(root.transform, "Main", 10);
@@ -2406,6 +2558,7 @@ namespace BuffIt2TheLimit {
                 (new[] { RewiredActionType.DPadVertical }, "pad.h.select"),
                 (new[] { RewiredActionType.Confirm }, "pad.h.apply"),
                 (new[] { RewiredActionType.Func01 }, "pad.h.all"),
+                (new[] { RewiredActionType.LeftUp, RewiredActionType.RightUp }, "pad.h.tab"),
                 (new[] { RewiredActionType.Decline }, "pad.h.close"));
             menu.mainConfirmLabel = mainHints[1].GetComponentsInChildren<TextMeshProUGUI>().Last();
 
@@ -2418,9 +2571,12 @@ namespace BuffIt2TheLimit {
                 (new[] { RewiredActionType.Confirm }, "pad.h.open"),
                 (new[] { RewiredActionType.Func02 }, "pad.h.rename"),
                 (new[] { RewiredActionType.Func01 }, "pad.h.hide"),
-                (new[] { RewiredActionType.RightUp }, "pad.h.delete"),
-                (new[] { RewiredActionType.Decline }, "pad.h.back"));
+                (new[] { RewiredActionType.RightStickButton }, "pad.h.delgroup"),
+                (new[] { RewiredActionType.LeftUp, RewiredActionType.RightUp }, "pad.h.tab"),
+                (new[] { RewiredActionType.Decline }, "pad.h.close"));
             menu.groupsDeleteHint = groupHints[4];
+            if (!PadSettings.KeyboardMode)
+                menu.deleteHoldFill = AddHoldRing(groupHints[4].transform.Find("Icon"));
             menu.groupsRoot.SetActive(false);
 
             // members
@@ -2482,12 +2638,13 @@ namespace BuffIt2TheLimit {
 
             // editor
             menu.editorRoot = MakeContainer(root.transform, "Editor", 6);
-            var tabRow = MakeHorizontal(menu.editorRoot.transform, "Tabs", 14, TextAnchor.MiddleLeft);
-            Clickable(MakeIcon(tabRow.transform, font, RewiredActionType.LeftUp, 32), RewiredActionType.LeftUp);
-            menu.tabText = MakeText(tabRow.transform, font, "", 21, FontStyles.Normal, TextColor);
-            menu.tabText.enableWordWrapping = false;
-            AddPointer(menu.tabText.gameObject, tint: false).Click = menu.ClickTab;
-            Clickable(MakeIcon(tabRow.transform, font, RewiredActionType.RightUp, 32), RewiredActionType.RightUp);
+            var filterBox = new GameObject("Show", typeof(RectTransform));
+            filterBox.transform.SetParent(menu.editorRoot.transform, false);
+            ConfigureVertical(filterBox.AddComponent<VerticalLayoutGroup>(), new RectOffset(0, (int)ModBar.ModScrollbar.Width + 4, 0, 4), 0);
+            menu.filterRow = MakeListRow(filterBox.transform, font, 21, withBox: false);
+            menu.filterRow.Pointer.Click = e => menu.ClickFilter(e);
+            menu.filterRow.Control = ModBar.ModControl.Create((RectTransform)menu.filterRow.Bg.transform, menu.filterRow.Text, OptionControlWidth, OptionControlHeight);
+            menu.filterRow.Control.Step = d => menu.StepFilter(d);
             var editorBox = MakeListBox(menu.editorRoot.transform, 6, out menu.editorBar);
             menu.editorBar.Moved = first => menu.ScrollEditor(Mathf.RoundToInt(first) - menu.top);
             for (int r = 0; r < VisibleRows; r++) {
@@ -2507,7 +2664,7 @@ namespace BuffIt2TheLimit {
             chipLayout.childForceExpandWidth = true;
             chipLayout.childForceExpandHeight = false;
             menu.chipHolder = chipHolder.transform;
-            MakeHintBar(menu.editorRoot.transform, font,
+            var editorHints = MakeHintBar(menu.editorRoot.transform, font,
                 (new[] { RewiredActionType.DPadVertical }, "pad.h.buff"),
                 (new[] { RewiredActionType.DPadHorizontal }, "pad.h.char"),
                 (new[] { RewiredActionType.Confirm }, "pad.h.target"),
@@ -2515,6 +2672,8 @@ namespace BuffIt2TheLimit {
                 (new[] { RewiredActionType.Func01 }, "pad.h.auto"),
                 (new[] { RewiredActionType.LeftUp, RewiredActionType.RightUp }, "pad.h.tab"),
                 (new[] { RewiredActionType.Decline }, "pad.h.back"));
+            menu.editorTabHint = editorHints[5];
+            menu.editorBackLabel = editorHints[6].GetComponentsInChildren<TextMeshProUGUI>().Last();
             menu.editorRoot.SetActive(false);
 
             // help
@@ -2538,8 +2697,9 @@ namespace BuffIt2TheLimit {
             menu.helpBar.Moved = first => menu.ScrollHelp(first - menu.helpOffset);
             MakeHintBar(menu.helpRoot.transform, font,
                 (new[] { RewiredActionType.DPadVertical }, "pad.h.scroll"),
-                (new[] { RewiredActionType.LeftUp, RewiredActionType.RightUp }, "pad.h.section"),
-                (new[] { RewiredActionType.Decline }, "pad.h.back"));
+                (new[] { RewiredActionType.DPadHorizontal }, "pad.h.section"),
+                (new[] { RewiredActionType.LeftUp, RewiredActionType.RightUp }, "pad.h.tab"),
+                (new[] { RewiredActionType.Decline }, "pad.h.close"));
             menu.helpRoot.SetActive(false);
 
             // options
@@ -2558,14 +2718,103 @@ namespace BuffIt2TheLimit {
             menu.optDetail = MakeText(menu.optionsRoot.transform, font, "", 18, FontStyles.Normal, DimColor);
             var optionLayout = menu.optDetail.gameObject.AddComponent<LayoutElement>();
             optionLayout.minHeight = 48;
-            MakeHintBar(menu.optionsRoot.transform, font,
+            var optionHints = MakeHintBar(menu.optionsRoot.transform, font,
                 (new[] { RewiredActionType.DPadVertical }, "pad.h.select"),
                 (new[] { RewiredActionType.Confirm }, "pad.h.change"),
                 (new[] { RewiredActionType.DPadHorizontal }, "pad.h.value"),
+                (new[] { RewiredActionType.LeftUp, RewiredActionType.RightUp }, "pad.h.tab"),
                 (new[] { RewiredActionType.Decline }, "pad.h.back"));
+            menu.optionsTabHint = optionHints[3];
+            menu.optionsBackLabel = optionHints[4].GetComponentsInChildren<TextMeshProUGUI>().Last();
             menu.optionsRoot.SetActive(false);
 
+            menu.BuildConfirm(root.transform);
             return menu;
+        }
+
+        // The confirmation over the window: a shade over the whole sheet that takes the clicks, a small sheet in the
+        // middle with the question and the A and B buttons.
+        private void BuildConfirm(Transform panelRoot) {
+            confirmRoot = new GameObject("Confirm", typeof(RectTransform));
+            confirmRoot.transform.SetParent(panelRoot, false);
+            confirmRoot.AddComponent<LayoutElement>().ignoreLayout = true;
+            Stretch((RectTransform)confirmRoot.transform, 0);
+            var shade = confirmRoot.AddComponent<Image>();
+            shade.color = new Color(0f, 0f, 0f, 0.55f);
+            // A right click anywhere is B, as everywhere in the menu; clicks elsewhere do nothing.
+            AddPointer(confirmRoot, tint: false);
+
+            var sheet = new GameObject("Sheet", typeof(RectTransform));
+            sheet.transform.SetParent(confirmRoot.transform, false);
+            var rect = (RectTransform)sheet.transform;
+            rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new Vector2(640, 0);
+            PadTheme.Panel(sheet.AddComponent<Image>());
+            ConfigureVertical(sheet.AddComponent<VerticalLayoutGroup>(), PadTheme.Paper ? PadTheme.PanelPadding : new RectOffset(28, 28, 22, 22), 18);
+            sheet.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            confirmText = MakeText(sheet.transform, font, "", 24, FontStyles.Normal, TextColor);
+            confirmText.alignment = TextAlignmentOptions.Center;
+            var buttons = MakeHorizontal(sheet.transform, "Buttons", 40, TextAnchor.MiddleCenter);
+            foreach (var (button, key) in new[] { (RewiredActionType.Confirm, "pad.h.delete"), (RewiredActionType.Decline, "pad.h.cancel") }) {
+                var item = MakeHorizontal(buttons.transform, "Button", 8, TextAnchor.MiddleCenter);
+                MakeIcon(item.transform, font, button, PadTheme.HintIconSize);
+                var label = MakeText(item.transform, font, key.i8(), 22, FontStyles.Bold, TitleColor);
+                label.enableWordWrapping = false;
+                Clickable(item, button, label);
+            }
+            confirmRoot.SetActive(false);
+        }
+
+        // A press to hold: a faint ring around the button's icon and a bright one that fills clockwise while it is held,
+        // as the game marks its hold hints.
+        private static Image AddHoldRing(Transform icon) {
+            if (icon == null)
+                return null;
+            Image Ring(string name, Color color) {
+                var go = new GameObject(name, typeof(RectTransform));
+                go.transform.SetParent(icon, false);
+                go.AddComponent<LayoutElement>().ignoreLayout = true;
+                Stretch((RectTransform)go.transform, -4);
+                var image = go.AddComponent<Image>();
+                image.sprite = RingSprite;
+                image.color = color;
+                image.raycastTarget = false;
+                return image;
+            }
+            var hint = PadTheme.HintLabel;
+            Ring("HoldRing", new Color(hint.r, hint.g, hint.b, 0.45f));
+            var fill = Ring("HoldFill", PadTheme.HintHover);
+            fill.type = Image.Type.Filled;
+            fill.fillMethod = Image.FillMethod.Radial360;
+            fill.fillOrigin = (int)Image.Origin360.Top;
+            fill.fillClockwise = true;
+            fill.fillAmount = 0f;
+            return fill;
+        }
+
+        private static Sprite ringSprite;
+
+        // A white ring with soft edges, tinted by its image.
+        private static Sprite RingSprite {
+            get {
+                if (ringSprite != null)
+                    return ringSprite;
+                const int n = 64;
+                const float outer = 31f, width = 4f;
+                var tex = new Texture2D(n, n, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+                var pixels = new Color32[n * n];
+                for (int y = 0; y < n; y++) {
+                    for (int x = 0; x < n; x++) {
+                        float d = Mathf.Sqrt((x + 0.5f - n / 2f) * (x + 0.5f - n / 2f) + (y + 0.5f - n / 2f) * (y + 0.5f - n / 2f));
+                        float a = Mathf.Clamp01(outer - d + 0.5f) * Mathf.Clamp01(d - (outer - width) + 0.5f);
+                        pixels[y * n + x] = new Color32(255, 255, 255, (byte)(a * 255));
+                    }
+                }
+                tex.SetPixels32(pixels);
+                tex.Apply();
+                ringSprite = Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f));
+                return ringSprite;
+            }
         }
 
         // Button hints the way the game draws them under its Formation window: a row under the panel, each hint the
@@ -2708,6 +2957,7 @@ namespace BuffIt2TheLimit {
             RewiredActionType.DPadVertical => "D-pad",
             RewiredActionType.DPadHorizontal => "D-pad",
             RewiredActionType.DPadRight => "D-pad",
+            RewiredActionType.RightStickButton => "R3",
             _ => button.ToString()
         };
 
@@ -2821,7 +3071,7 @@ namespace BuffIt2TheLimit {
         private static void Clickable(GameObject go, RewiredActionType button, Graphic label = null, Color? hover = null) {
             if (button != RewiredActionType.Confirm && button != RewiredActionType.Decline && button != RewiredActionType.Func01
                 && button != RewiredActionType.Func02 && button != RewiredActionType.LeftUp && button != RewiredActionType.RightUp
-                && button != RewiredActionType.DPadRight)
+                && button != RewiredActionType.DPadRight && button != RewiredActionType.RightStickButton)
                 return;
             var pointer = AddPointer(go, tint: false);
             var mark = label != null ? label : go.GetComponent<Graphic>();
