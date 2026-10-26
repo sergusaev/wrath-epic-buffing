@@ -26,7 +26,9 @@ using Kingmaker.Blueprints.Classes;
 using Kingmaker.Blueprints.Classes.Spells;
 using Kingmaker.UnitLogic.ActivatableAbilities;
 using Kingmaker.UnitLogic.Parts;
-#if !KINGMAKER
+#if KINGMAKER
+using Kingmaker.Designers.Mechanics.Facts;
+#else
 using Kingmaker.Craft;
 #endif
 
@@ -231,11 +233,13 @@ namespace BuffIt2TheLimit {
                 }
             }
 
-#if !KINGMAKER
             try {
                 if (SavedState.ScrollsEnabled || SavedState.PotionsEnabled || SavedState.EquipmentEnabled) {
                     // Group usable items by blueprint to share credits across stacks
                     var usableItems = Game.Instance.Player.Inventory
+#if KINGMAKER
+                        .Where(item => item.IsIdentified)
+#endif
                         .Where(item => item.Blueprint is BlueprintItemEquipmentUsable usable
                             && (usable.Type == UsableItemType.Scroll
                                 || usable.Type == UsableItemType.Potion
@@ -257,11 +261,18 @@ namespace BuffIt2TheLimit {
                         if (isWand && !SavedState.EquipmentEnabled) continue;
 
                         var firstItem = itemGroup.First();
+#if KINGMAKER
+                        // No crafting in Kingmaker; RuleCastSpell checks UMD against 20 + spell
+                        // level for a scroll and 20 for anything else.
+                        int effectiveSL = blueprint.SpellLevel;
+                        int effectiveDC = isScroll ? 20 + blueprint.SpellLevel : 20;
+#else
                         // Crafted items (CraftedItemPart) override blueprint SL/DC.
                         // Caster level is per-character (see GetItemCasterLevel).
                         var crafted = firstItem.Get<CraftedItemPart>();
                         int effectiveSL = crafted?.SpellLevel ?? blueprint.SpellLevel;
                         int effectiveDC = crafted?.AbilityDC ?? (20 + blueprint.CasterLevel);
+#endif
 
                         if (isPotion) {
                             int totalCount = itemGroup.Sum(item => item.Count);
@@ -269,10 +280,7 @@ namespace BuffIt2TheLimit {
                             _sharedItemCredits[blueprint] = sharedCredits;
                             for (int characterIndex = 0; characterIndex < Group.Count; characterIndex++) {
                                 UnitEntityData dude = Group[characterIndex];
-                                var abilityData = new AbilityData(spellBlueprint, dude) {
-                                    OverrideCasterLevel = GetItemCasterLevel(firstItem, dude),
-                                    OverrideSpellLevel = effectiveSL,
-                                };
+                                var abilityData = ItemSpell(spellBlueprint, firstItem, dude, effectiveSL);
                                 Main.Verbose($"      Adding potion buff: {spellBlueprint.Name} for {dude.CharacterName}", "state");
 
                                 AddBuff(dude: dude,
@@ -298,10 +306,7 @@ namespace BuffIt2TheLimit {
                                 UnitEntityData dude = Group[characterIndex];
                                 if (!CanUseItemWithUmd(dude, spellBlueprint, scrollDC)) continue;
 
-                                var abilityData = new AbilityData(spellBlueprint, dude) {
-                                    OverrideCasterLevel = GetItemCasterLevel(firstItem, dude),
-                                    OverrideSpellLevel = effectiveSL,
-                                };
+                                var abilityData = ItemSpell(spellBlueprint, firstItem, dude, effectiveSL);
                                 Main.Verbose($"      Adding scroll buff: {spellBlueprint.Name} for {dude.CharacterName}", "state");
 
                                 AddBuff(dude: dude,
@@ -328,10 +333,7 @@ namespace BuffIt2TheLimit {
                                 UnitEntityData dude = Group[characterIndex];
                                 if (!CanUseItemWithUmd(dude, spellBlueprint, wandDC)) continue;
 
-                                var abilityData = new AbilityData(spellBlueprint, dude) {
-                                    OverrideCasterLevel = GetItemCasterLevel(firstItem, dude),
-                                    OverrideSpellLevel = effectiveSL,
-                                };
+                                var abilityData = ItemSpell(spellBlueprint, firstItem, dude, effectiveSL);
                                 Main.Verbose($"      Adding wand buff: {spellBlueprint.Name} from {blueprint.Name} for {dude.CharacterName}", "state");
 
                                 AddBuff(dude: dude,
@@ -353,9 +355,7 @@ namespace BuffIt2TheLimit {
             } catch (Exception ex) {
                 Main.Error(ex, "finding scrolls/potions");
             }
-#endif
 
-#if !KINGMAKER
             try {
                 if (SavedState.EquipmentEnabled) {
                     // Scan quickslot items for activatable equipment buffs (wands, rods, etc.)
@@ -391,11 +391,12 @@ namespace BuffIt2TheLimit {
                             }
 
                             var credits = new ReactiveProperty<int>(charges);
+#if KINGMAKER
+                            var abilityData = ItemSpell(spellBlueprint, itemEntity, dude, usableBp.SpellLevel);
+#else
                             var quickCrafted = itemEntity.Get<CraftedItemPart>();
-                            var abilityData = new AbilityData(spellBlueprint, dude) {
-                                OverrideCasterLevel = GetItemCasterLevel(itemEntity, dude),
-                                OverrideSpellLevel = quickCrafted?.SpellLevel ?? usableBp.SpellLevel,
-                            };
+                            var abilityData = ItemSpell(spellBlueprint, itemEntity, dude, quickCrafted?.SpellLevel ?? usableBp.SpellLevel);
+#endif
 
                             Main.Verbose($"      Adding equipment buff: {spellBlueprint.Name} from {usableBp.Name} for {dude.CharacterName}", "state");
 
@@ -417,7 +418,6 @@ namespace BuffIt2TheLimit {
             } catch (Exception ex) {
                 Main.Error(ex, "finding equipment buffs");
             }
-#endif
 
             try {
                 for (int characterIndex = 0; characterIndex < Group.Count; characterIndex++) {
@@ -746,6 +746,37 @@ namespace BuffIt2TheLimit {
             JsonSerializer.CreateDefault().Serialize(settingsWriter, SavedState);
         }
 
+#if KINGMAKER
+        /// <summary>
+        /// Kingmaker: a metamagic rod works for the one who holds it in a quick slot. Its
+        /// activatable ability carries MetamagicRodMechanics on its buff, and its charges are
+        /// that unit's resource. Weakest suitable rod first; charges are tracked per rod item.
+        /// </summary>
+        public static Kingmaker.Items.ItemEntity FindBestExtendRod(UnitEntityData caster, int spellLevel, Dictionary<Kingmaker.Items.ItemEntity, int> remainingCharges) {
+            var rods = ExtendRods(caster)
+                .Where(r => r.rod.MaxSpellLevel >= spellLevel)
+                .OrderBy(r => r.rod.MaxSpellLevel);
+            foreach (var (item, rod, resource) in rods) {
+                if (!remainingCharges.TryGetValue(item, out var charges)) {
+                    charges = resource == null ? 0 : caster.Descriptor.Resources.GetResourceAmount(resource);
+                    remainingCharges[item] = charges;
+                }
+                if (charges > 0) return item;
+            }
+            return null;
+        }
+
+        internal static IEnumerable<(Kingmaker.Items.ItemEntity item, MetamagicRodMechanics rod, BlueprintAbilityResource resource)> ExtendRods(UnitEntityData caster) {
+            foreach (var activatable in caster.ActivatableAbilities.RawFacts.OfType<ActivatableAbility>()) {
+                if (activatable.SourceItem == null) continue;
+                var rod = activatable.Blueprint.Buff?.GetComponents<MetamagicRodMechanics>()
+                    .FirstOrDefault(m => m.Metamagic == Metamagic.Extend);
+                if (rod == null) continue;
+                var resource = activatable.Blueprint.GetComponent<ActivatableAbilityResourceLogic>()?.RequiredResource;
+                yield return (activatable.SourceItem, rod, resource);
+            }
+        }
+#else
         // Extend Rod blueprint GUIDs (Lesser → Normal → Greater, sorted by MaxSpellLevel)
         private static readonly (string guid, int maxSpellLevel)[] ExtendRodBlueprints = {
             ("1cf04842d5dbd0f49946b1af1022cd1a", 3),  // Lesser Extend Rod
@@ -758,7 +789,7 @@ namespace BuffIt2TheLimit {
         /// Uses remainingCharges to track charges within a single Execute() pass.
         /// Returns the item, or null if no suitable rod is available.
         /// </summary>
-        public static Kingmaker.Items.ItemEntity FindBestExtendRod(int spellLevel, Dictionary<Kingmaker.Items.ItemEntity, int> remainingCharges) {
+        public static Kingmaker.Items.ItemEntity FindBestExtendRod(UnitEntityData caster, int spellLevel, Dictionary<Kingmaker.Items.ItemEntity, int> remainingCharges) {
             foreach (var (guid, maxSpellLevel) in ExtendRodBlueprints) {
                 if (spellLevel > maxSpellLevel) continue;
 
@@ -779,6 +810,7 @@ namespace BuffIt2TheLimit {
             }
             return null;
         }
+#endif
 
         private static Dictionary<Guid, AbilityCombinedEffects> SpellsWithBeneficialBuffs = new();
         private static Dictionary<Guid, string> SpellNames = new();
@@ -1005,10 +1037,28 @@ namespace BuffIt2TheLimit {
             if (onClassList) return true;
 
             if (SavedState.UmdMode == UmdMode.SafeOnly) return false;
+#if KINGMAKER
+            // Kingmaker refuses the check to anyone without ranks in the skill.
+            if (!dude.Descriptor.HasUMDSkill) return false;
+#endif
 
             var umdBonus = dude.Stats.SkillUseMagicDevice.ModifiedValue;
             if (SavedState.UmdMode == UmdMode.AlwaysTry) return umdBonus > 0;
             return (umdBonus + 20) >= dc;
+        }
+
+        // The spell of an item as the menu plans it. Kingmaker's AbilityData has no caster level
+        // override: the cast itself goes through an item-granted fact (KmExecutionEngine), and
+        // the game takes caster level, DC and UMD from the item there.
+        private static AbilityData ItemSpell(BlueprintAbility spell, ItemEntity item, UnitEntityData dude, int spellLevel) {
+#if KINGMAKER
+            return new AbilityData(spell, dude.Descriptor) { OverrideSpellLevel = spellLevel };
+#else
+            return new AbilityData(spell, dude) {
+                OverrideCasterLevel = GetItemCasterLevel(item, dude),
+                OverrideSpellLevel = spellLevel,
+            };
+#endif
         }
 
 #if !KINGMAKER

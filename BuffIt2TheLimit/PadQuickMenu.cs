@@ -2068,7 +2068,6 @@ namespace BuffIt2TheLimit {
                 }, "pad.set.source.note".i8()));
             Source("songs", "setting-songs-enabled", () => saved.SongsEnabled, v => saved.SongsEnabled = v);
             Source("toggles", "setting-activatables-enabled", () => saved.ActivatablesEnabled, v => saved.ActivatablesEnabled = v);
-#if !KINGMAKER
             Source("scrolls", "setting-scrolls-enabled", () => saved.ScrollsEnabled, v => saved.ScrollsEnabled = v);
             Source("potions", "setting-potions-enabled", () => saved.PotionsEnabled, v => saved.PotionsEnabled = v);
             Source("equipment", "setting-equipment-enabled", () => saved.EquipmentEnabled, v => saved.EquipmentEnabled = v);
@@ -2084,7 +2083,6 @@ namespace BuffIt2TheLimit {
                 saved.UmdRetries = Mathf.Clamp(saved.UmdRetries + d, 1, 20);
                 s.Save(true);
             }, "setting-umd-retries-tooltip".i8()));
-#endif
 
             list.Add(Head("pad.set.view".i8()));
             list.Add(Cycle("display", "pad.set.display".i8(), () => DisplayName(pad.Display), d => {
@@ -2119,7 +2117,6 @@ namespace BuffIt2TheLimit {
             }
             list.Add(Flag("hide", Label("hideability"), () => buff.HideBecause(HideReason.Blacklisted),
                 v => buff.SetHidden(HideReason.Blacklisted, v), "pad.buffset.hide.note".i8()));
-#if !KINGMAKER
             list.Add(Head("pad.buffset.sources".i8()));
             list.Add(Flag("spells", Label("use.spells"), () => buff.UseSpells, v => buff.UseSpells = v));
             list.Add(Flag("scrolls", Label("use.scrolls"), () => buff.UseScrolls, v => buff.UseScrolls = v));
@@ -2130,7 +2127,6 @@ namespace BuffIt2TheLimit {
                 () => buff.SourcePriorityOverride < 0 ? "priority.useglobal".i8() : PriorityName(buff.SourcePriorityOverride),
                 d => buff.SourcePriorityOverride = Wrap(buff.SourcePriorityOverride + 1, d, 7) - 1, null,
                 () => Enumerable.Range(0, 6).Select(PriorityName).Append("priority.useglobal".i8())));
-#endif
 
             var ranks = s.SavedState.CasterRanks ??= new Dictionary<string, int>();
             for (int i = 0; i < buff.CasterQueue.Count; i++) {
@@ -2197,6 +2193,7 @@ namespace BuffIt2TheLimit {
                 && (caster.ShareTransmutation || !caster.SelfCastOnly))
                 list.Add(Flag(id + ":zippy", Label("use.azatazippymagic"), () => caster.AzataZippyMagic, v => caster.AzataZippyMagic = v));
         }
+#endif
 
         private static string PriorityName(int priority) => priority switch {
             0 => "priority.spells-scrolls-potions".i8(),
@@ -2212,7 +2209,6 @@ namespace BuffIt2TheLimit {
             UmdMode.AlwaysTry => "umd.alwaystry".i8(),
             _ => "umd.allowifpossible".i8()
         };
-#endif
 
         private static string SourceName(BuffProvider caster) => caster.SourceType switch {
             BuffSourceType.Scroll => "source.scroll".i8(),

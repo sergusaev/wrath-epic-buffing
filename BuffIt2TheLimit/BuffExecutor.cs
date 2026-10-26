@@ -680,6 +680,7 @@ namespace BuffIt2TheLimit {
                             continue;
                         }
 
+#if !KINGMAKER
                         // UMD check for scroll usage
                         if (caster.SourceType == BuffSourceType.Scroll && caster.RequiresUmdCheck) {
                             int maxRetries = State.SavedState.UmdRetries;
@@ -698,6 +699,7 @@ namespace BuffIt2TheLimit {
                                 continue;
                             }
                         }
+#endif
 
                         // Azata Zippy Magic
 #if KINGMAKER
@@ -775,6 +777,7 @@ namespace BuffIt2TheLimit {
                             SelfCastOnly = caster.SelfCastOnly,
                             SourceType = caster.SourceType,
                             SourceItem = caster.SourceItem,
+                            UmdRetries = State.SavedState.UmdRetries,
                             OriginalMetamagicWasNull = spellToCast.MetamagicData == null,
                             OriginalMetamagicMask = spellToCast.MetamagicData?.MetamagicMask ?? (Metamagic)0,
                             OriginalSpellLevelCost = spellToCast.MetamagicData?.SpellLevelCost ?? 0,
@@ -786,7 +789,7 @@ namespace BuffIt2TheLimit {
                         // spellbook to determine spell level from. Future extension possible.
                         if (buff.UseExtendRod && caster.SourceType == BuffSourceType.Spell) {
                             int spellLevel = caster.spell.Spellbook.GetSpellLevel(caster.spell);
-                            var rod = BufferState.FindBestExtendRod(spellLevel, remainingRodCharges);
+                            var rod = BufferState.FindBestExtendRod(caster.who, spellLevel, remainingRodCharges);
                             if (rod != null) {
                                 task.MetamagicRodItem = rod;
                                 remainingRodCharges[rod] = remainingRodCharges[rod] - 1;
@@ -1087,6 +1090,7 @@ namespace BuffIt2TheLimit {
                             SelfCastOnly = caster.SelfCastOnly,
                             SourceType = caster.SourceType,
                             SourceItem = caster.SourceItem,
+                            UmdRetries = State.SavedState.UmdRetries,
                             OriginalMetamagicWasNull = spellToCast?.MetamagicData == null,
                             OriginalMetamagicMask = spellToCast?.MetamagicData?.MetamagicMask ?? (Metamagic)0,
                             OriginalSpellLevelCost = spellToCast?.MetamagicData?.SpellLevelCost ?? 0,
@@ -1095,7 +1099,7 @@ namespace BuffIt2TheLimit {
 
                         if (buff.UseExtendRod && caster.SourceType == BuffSourceType.Spell) {
                             int spellLevel = caster.spell.Spellbook.GetSpellLevel(caster.spell);
-                            var rod = BufferState.FindBestExtendRod(spellLevel, remainingRodCharges);
+                            var rod = BufferState.FindBestExtendRod(caster.who, spellLevel, remainingRodCharges);
                             if (rod != null) {
                                 task.MetamagicRodItem = rod;
                                 remainingRodCharges[rod] = remainingRodCharges[rod] - 1;
@@ -1159,6 +1163,8 @@ namespace BuffIt2TheLimit {
         public BuffSourceType SourceType;
         public Kingmaker.Items.ItemEntity SourceItem;
         public Kingmaker.Items.ItemEntity MetamagicRodItem;
+        // Kingmaker rolls Use Magic Device for real when the item is used: attempts per cast.
+        public int UmdRetries;
         // Original MetamagicData state, captured before any EngineCastingHandler
         // modifies the shared SpellToCast. Used by handlers to restore/clean state.
         public bool OriginalMetamagicWasNull;

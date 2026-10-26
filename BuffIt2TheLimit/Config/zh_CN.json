@@ -246,7 +246,7 @@
   "pad.key.shift": "Aa",
   "pad.key.erase": "Erase",
   "pad.key.done": "Done",
-  "pad.help.km": "# Kingmaker\n- Scrolls, potions and wands are not used: only spellbooks, class abilities, activatables and songs.\n- The cast result is shown in the pop-up and in the combat log.\n- A slot is spent even when the spell fails (e.g. armor), as in the game itself.\n- With mouse and keyboard the quick cast bar sits above the action bar; its position is set in Settings. Right click on a group button opens its buffs in this menu.",
+  "pad.help.km": "# Kingmaker\n- Scrolls, potions, wands and charged items are switched on in Settings, under Sources; the order of sources is set there and per buff. The game itself rolls Use Magic Device: a failed check spends nothing and is rolled again up to the set number of times.\n- An Extend rod works when it is in the caster's quick slot; it spends one of its daily charges.\n- The cast result is shown in the pop-up and in the combat log.\n- A slot is spent even when the spell fails (e.g. armor), as in the game itself.\n- With mouse and keyboard the quick cast bar sits above the action bar; its position is set in Settings. Right click on a group button opens its buffs in this menu.",
   "pad.h.section": "Section",
   "pad.help.src": "## Where the list comes from\nThe list holds the buffs the mod found on the characters of the **current party** (pets only as targets):\n- spontaneous casters — all known spells;\n- prepared casters (Cleric, Wizard) — only spells **prepared** right now: what isn't prepared isn't listed;\n- class abilities, activatable abilities and songs;",
   "pad.help.src.items": "- scrolls, potions and items;",
