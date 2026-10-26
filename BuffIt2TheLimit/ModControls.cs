@@ -647,7 +647,7 @@ namespace ModBar
         {
             m_Choice = Box("Choice", transform);
 #if KINGMAKER
-            // Kingmaker's choice: the value in a thin frame between two round arrow buttons.
+            // Kingmaker's choice: the value on the plate of a lit button between two round arrow buttons.
             float size = m_Height;
             var left = ArrowButton(m_Choice, size, -1);
             var right = ArrowButton(m_Choice, size, 1);
@@ -659,8 +659,8 @@ namespace ModBar
             frame.anchorMin = new Vector2(0f, 0f);
             frame.anchorMax = new Vector2(1f, 1f);
             frame.sizeDelta = new Vector2(-2f * (size + m_Height * 0.12f), 0f);
-            GameArt.Paint(frame.gameObject.AddComponent<Image>(), GameArt.Part.Frame, m_Height, PlainMid);
-            m_ChoiceText = Label(frame, ChoiceText);
+            GameArt.Paint(frame.gameObject.AddComponent<Image>(), GameArt.Part.On, m_Height, PlainDark);
+            m_ChoiceText = Label(frame, Light);
             Between(m_ChoiceText, m_Height * 0.15f);
             Click(frame.gameObject, () => { if (Step != null) Step(1); });
 #else

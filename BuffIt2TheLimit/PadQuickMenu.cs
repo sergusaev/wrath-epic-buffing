@@ -167,7 +167,9 @@ namespace BuffIt2TheLimit {
             // Shown as a switch (On) or a choice between arrows (Choice) at the right of the row.
             public Func<bool> On;
             public Func<string> Choice;
-            // Every word the choice may show, so the page sizes its plates once (the current one when not given).
+            // Choices of one plate group are as wide as the longest word any of them may show (Words), so the
+            // group lines up and keeps its width while stepping; the other controls fit their own word.
+            public string Plate;
             public Func<IEnumerable<string>> Words;
             public bool Header => Change == null;
         }
@@ -176,7 +178,7 @@ namespace BuffIt2TheLimit {
         private readonly List<ListRow> optRows = new();
         private TextMeshProUGUI optDetail;
         private List<Opt> opts = new();
-        private float optPlate;
+        private readonly Dictionary<string, float> optPlates = new();
         private Func<List<Opt>> optSource;
         private string optTitle;
         private Page optBack;
@@ -1887,7 +1889,7 @@ namespace BuffIt2TheLimit {
                 Main.Error(ex, "PadQuickMenu.RebuildOptions");
                 opts = new List<Opt>();
             }
-            optPlate = PlateWidth();
+            optPlates.Clear();
             int found = keep == null ? -1 : opts.FindIndex(o => o.Id == keep);
             if (found >= 0) {
                 optCursor = found;
@@ -1962,7 +1964,7 @@ namespace BuffIt2TheLimit {
                     continue;
                 }
                 bool atCursor = at == optCursor;
-                row.Control.Least = optPlate;
+                row.Control.Least = 0f;
                 row.Bg.color = atCursor ? RowSelectedColor : RowColor;
                 if (opt.On != null) {
                     row.Text.text = Trim(opt.Label, 48);
@@ -1970,6 +1972,10 @@ namespace BuffIt2TheLimit {
                 } else if (opt.Choice != null) {
                     row.Text.text = Trim(opt.Label, 48);
                     row.Control.SetChoice(opt.Choice());
+                    if (opt.Plate != null) {
+                        row.Control.Least = PlateWidth(opt, row.Control);
+                        row.Control.SetChoice(opt.Choice());
+                    }
                 } else {
                     row.Control.Hide();
                     string value = opt.Value?.Invoke() ?? "";
@@ -1981,21 +1987,15 @@ namespace BuffIt2TheLimit {
             optDetail.text = (current?.Note ?? "") + more;
         }
 
-        // All plates of the page as wide as its longest word needs.
-        private float PlateWidth() {
-            var control = optRows.FirstOrDefault()?.Control;
-            if (control == null)
-                return 0f;
-            float width = 0f;
-            foreach (var opt in opts) {
-                IEnumerable<string> words = opt.On != null
-                    ? new[] { Initial("pad.opt.on".i8()), Initial("pad.opt.off".i8()) }
-                    : opt.Choice == null ? null : opt.Words?.Invoke() ?? new[] { opt.Choice() };
-                if (words != null)
-                    foreach (var word in words)
-                        width = Mathf.Max(width, control.Need(word));
-            }
-            return width;
+        // A plate group as wide as the longest word any of its choices may show. Measured on a shown control:
+        // TMP measures a text of an inactive object with the wrong font size.
+        private float PlateWidth(Opt shown, ModBar.ModControl control) {
+            if (optPlates.TryGetValue(shown.Plate, out var width))
+                return width;
+            foreach (var opt in opts.Where(o => o.Plate == shown.Plate && o.Choice != null))
+                foreach (var word in opt.Words?.Invoke() ?? new[] { opt.Choice() })
+                    width = Mathf.Max(width, control.Need(word));
+            return optPlates[shown.Plate] = width;
         }
 
         private static string OnOff(bool on) => on
@@ -2019,11 +2019,12 @@ namespace BuffIt2TheLimit {
         };
 
         private static Opt Cycle(string id, string label, Func<string> value, Action<int> change, string note = null,
-            Func<IEnumerable<string>> words = null) => new() {
+            Func<IEnumerable<string>> words = null, string plate = null) => new() {
             Id = id,
             Label = label,
             Choice = value,
             Words = words,
+            Plate = plate,
             Value = () => $"<link=\"dec\"><color={PadTheme.Heading}>‹</color> </link>{value()}<link=\"inc\"> <color={PadTheme.Heading}>›</color></link>",
             Change = change,
             Note = note
@@ -2074,11 +2075,11 @@ namespace BuffIt2TheLimit {
             list.Add(Cycle("priority", Label("setting-source-priority"), () => PriorityName((int)saved.GlobalSourcePriority), d => {
                 saved.GlobalSourcePriority = (SourcePriority)Wrap((int)saved.GlobalSourcePriority, d, 6);
                 s.Save(true);
-            }, "setting-source-priority-tooltip".i8(), () => Enumerable.Range(0, 6).Select(PriorityName)));
+            }, "setting-source-priority-tooltip".i8(), () => Enumerable.Range(0, 6).Select(PriorityName), "sources"));
             list.Add(Cycle("umdmode", Label("setting-umd-mode"), () => UmdName(saved.UmdMode), d => {
                 saved.UmdMode = (UmdMode)Wrap((int)saved.UmdMode, d, 3);
                 s.Save(true);
-            }, "setting-umd-mode-tooltip".i8(), () => Enumerable.Range(0, 3).Select(i => UmdName((UmdMode)i))));
+            }, "setting-umd-mode-tooltip".i8(), () => Enumerable.Range(0, 3).Select(i => UmdName((UmdMode)i)), "sources"));
             list.Add(Cycle("umdretries", Label("setting-umd-retries"), () => saved.UmdRetries.ToString(), d => {
                 saved.UmdRetries = Mathf.Clamp(saved.UmdRetries + d, 1, 20);
                 s.Save(true);
@@ -2089,7 +2090,7 @@ namespace BuffIt2TheLimit {
                 pad.Display = (PadDisplay)Wrap((int)pad.Display, d, 3);
                 PadSettings.Save();
                 rebuildRequested = true;
-            }, "pad.set.display.note".i8(), () => Enumerable.Range(0, 3).Select(i => DisplayName((PadDisplay)i))));
+            }, "pad.set.display.note".i8()));
             list.Add(Flag("hidden", Label("showhidden"), () => pad.ShowHidden, v => {
                 pad.ShowHidden = v;
                 PadSettings.Save();
@@ -2113,7 +2114,7 @@ namespace BuffIt2TheLimit {
                 list.Add(Cycle("rounds", Label("deactivate.after.rounds"),
                     () => buff.DeactivateAfterRounds == 0 ? "nolimit".i8() : buff.DeactivateAfterRounds.ToString(),
                     d => buff.DeactivateAfterRounds = Mathf.Clamp(buff.DeactivateAfterRounds + d, 0, 20),
-                    "deactivate.after.rounds.tooltip".i8(), () => new[] { "nolimit".i8(), "20" }));
+                    "deactivate.after.rounds.tooltip".i8()));
             }
             list.Add(Flag("hide", Label("hideability"), () => buff.HideBecause(HideReason.Blacklisted),
                 v => buff.SetHidden(HideReason.Blacklisted, v), "pad.buffset.hide.note".i8()));
@@ -2126,7 +2127,7 @@ namespace BuffIt2TheLimit {
             list.Add(Cycle("priority", Label("setting-source-priority"),
                 () => buff.SourcePriorityOverride < 0 ? "priority.useglobal".i8() : PriorityName(buff.SourcePriorityOverride),
                 d => buff.SourcePriorityOverride = Wrap(buff.SourcePriorityOverride + 1, d, 7) - 1, null,
-                () => Enumerable.Range(0, 6).Select(PriorityName).Append("priority.useglobal".i8())));
+                () => Enumerable.Range(0, 6).Select(PriorityName).Append("priority.useglobal".i8()), "priority"));
 
             var ranks = s.SavedState.CasterRanks ??= new Dictionary<string, int>();
             for (int i = 0; i < buff.CasterQueue.Count; i++) {
@@ -2137,8 +2138,7 @@ namespace BuffIt2TheLimit {
                 if (caster.MaxCap < 100) {
                     list.Add(Cycle(id + ":cap", Label("limitcasts"),
                         () => caster.CustomCap < 0 ? $"{"nolimit".i8()} ({caster.MaxCap})" : $"{caster.CustomCap}/{caster.MaxCap}",
-                        d => caster.CustomCap = NextCap(caster, d), null,
-                        () => new[] { $"{"nolimit".i8()} ({caster.MaxCap})", $"{caster.MaxCap}/{caster.MaxCap}" }));
+                        d => caster.CustomCap = NextCap(caster, d)));
                 }
                 if (!buff.IsActivatable) {
                     string unitId = caster.who.UniqueId;

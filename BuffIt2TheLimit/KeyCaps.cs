@@ -204,7 +204,32 @@ namespace ModBar
             text.overflowMode = TextOverflowModes.Overflow;
             text.margin = Vector4.zero;
             text.raycastTarget = false;
+            go.AddComponent<Kept>().Size = text.fontSize;
             return text;
+        }
+
+        // A text made on an inactive object takes TMP's defaults when it wakes (Kingmaker): the size and the middle
+        // are set again whenever the key is shown.
+        sealed class Kept : MonoBehaviour
+        {
+            internal float Size;
+
+            void OnEnable()
+            {
+                var text = GetComponent<TextMeshProUGUI>();
+                if (text == null) return;
+                text.enableAutoSizing = false;
+                text.fontSize = Size;
+                text.fontStyle = FontStyles.Bold;
+                text.alignment = TextAlignmentOptions.Midline;
+                text.enableWordWrapping = false;
+                text.margin = Vector4.zero;
+                var rect = (RectTransform)transform;
+                rect.anchorMin = Vector2.zero;
+                rect.anchorMax = Vector2.one;
+                rect.sizeDelta = Vector2.zero;
+                rect.anchoredPosition = Vector2.zero;
+            }
         }
 
         // ---------- keys inside a text ----------
